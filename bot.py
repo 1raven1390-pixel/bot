@@ -3,8 +3,9 @@ from telebot import types
 import sqlite3
 import time
 from datetime import datetime
+import os
 
-TOKEN = "8695463789:AAF7vKrNUtp05Nm5ydsEY6W8qeUYJ45KXoE"
+TOKEN = os.getenv("8695463789:AAF7vKrNUtp05Nm5ydsEY6W8qeUYJ45KXoE")
 ADMIN_ID = 8521801987
 CHANNEL = "@rafe_filter_A"
 
