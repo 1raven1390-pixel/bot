@@ -7,7 +7,6 @@ from flask import Flask
 from threading import Thread
 
 # --- تنظیمات اولیه ---
-# توکن را در رندر با نام BOT_TOKEN تنظیم کنید
 TOKEN = os.getenv("BOT_TOKEN") 
 ADMIN_ID = 8521801987
 CHANNEL_ID = "@rafe_filter_A"
@@ -15,6 +14,9 @@ SUPPORT_ID = "@Amir_confing_meli"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask('')
+
+# دیکشنری برای مدیریت وضعیت کاربران (جایگزین Next Step Handler)
+user_states = {}
 
 # --- دیتابیس ---
 conn = sqlite3.connect("bot.db", check_same_thread=False)
@@ -33,8 +35,6 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 conn.commit()
 
-user_data = {}
-
 # --- توابع کمکی ---
 def is_member(user_id):
     try:
@@ -44,7 +44,13 @@ def is_member(user_id):
         return False
 
 def format_p(amount):
-    return "{:,}".format(amount)
+    return "{:,}".format(int(amount))
+
+def translate_to_english(text):
+    persian_numbers = "۰۱۲۳۴۵۶۷۸۹"
+    english_numbers = "0123456789"
+    translation_table = str.maketrans(persian_numbers, english_numbers)
+    return text.translate(translation_table)
 
 # --- کیبوردها ---
 def main_menu():
@@ -60,7 +66,8 @@ def main_menu():
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = m.from_user.id
-    # ثبت نام در دیتابیس
+    user_states[uid] = None # ریست کردن وضعیت
+    
     cursor.execute("SELECT * FROM users WHERE user_id=?", (uid,))
     if cursor.fetchone() is None:
         cursor.execute("INSERT INTO users VALUES (?,?,?,?,?,?,?,?)",
@@ -83,7 +90,75 @@ def check_join(c):
     else:
         bot.answer_callback_query(c.id, "❌ هنوز در کانال عضو نشده‌اید!", show_alert=True)
 
-# --- بخش حساب کاربری ---
+# --- مدیریت وضعیت‌های متنی (مبلغ و شماره کارت) ---
+@bot.message_handler(func=lambda m: user_states.get(m.chat.id) in ['WAIT_AMT', 'WAIT_CARD'])
+def handle_steps(m):
+    uid = m.chat.id
+    state = user_states.get(uid)
+    
+    if state == 'WAIT_AMT':
+        text = translate_to_english(m.text)
+        if text.isdigit():
+            user_states[uid] = {'state': 'WAIT_CARD', 'amt': int(text)}
+            bot.send_message(uid, f"✅ مبلغ {format_p(text)} تومان تایید شد.\n💳 حالا شماره کارت مبدا (شماره کارتی که با آن واریز می‌کنید) را ارسال کنید:")
+        else:
+            bot.send_message(uid, "❌ لطفاً فقط عدد وارد کنید:")
+
+    elif state == 'WAIT_CARD':
+        if len(m.text) > 2:
+            data = user_states[uid]
+            amt = data['amt']
+            user_states[uid] = {'state': 'WAIT_PHOTO', 'amt': amt, 'card': m.text}
+            
+            text_info = f"لطفاً دقیقا مبلغ {format_p(amt)} تومان به شماره کارت زیر واریز کنید:\n\n💳 `6221061233705260` \n👤 بنام: افراس\n\n📸 پس از واریز، دکمه زیر را بزنید و تصویر رسید را بفرستید."
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("📤 ارسال تصویر رسید", callback_data="upload_photo"))
+            bot.send_message(uid, text_info, reply_markup=kb, parse_mode="Markdown")
+        else:
+            bot.send_message(uid, "❌ شماره کارت معتبر وارد کنید:")
+
+# --- مدیریت ارسال عکس رسید ---
+@bot.message_handler(content_types=['photo'])
+def handle_receipt(m):
+    uid = m.chat.id
+    if isinstance(user_states.get(uid), dict) and user_states[uid].get('state') == 'WAIT_PHOTO':
+        d = user_states[uid]
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("✅ تایید", callback_data=f"adm_ok_{uid}_{d['amt']}"),
+               types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"))
+        
+        bot.send_photo(ADMIN_ID, m.photo[-1].file_id, 
+                       caption=f"💰 رسید جدید\n👤 آیدی کاربر: {uid}\n💵 مبلغ: {format_p(d['amt'])}\n💳 کارت مبدا: {d['card']}", 
+                       reply_markup=kb)
+        
+        user_states[uid] = None # ریست وضعیت
+        bot.send_message(uid, "✅ رسید برای ادمین ارسال شد. پس از بررسی، حساب شما شارژ می‌شود.")
+    else:
+        # اگر کاربر همینطوری عکس فرستاد واکنشی نشان نده یا راهنمایی کن
+        pass
+
+# --- کال‌بک‌های مربوط به شارژ و آپلود ---
+@bot.callback_query_handler(func=lambda c: c.data == "charge_start")
+def charge_1(c):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("💳 کارت به کارت", callback_data="c2c"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
+    bot.edit_message_text("لطفاً روش پرداخت را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "c2c")
+def charge_2(c):
+    user_states[c.from_user.id] = 'WAIT_AMT'
+    bot.edit_message_text("💰 مبلغ مورد نظر خود را به **تومان** وارد کنید:", c.message.chat.id, c.message.message_id, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda c: c.data == "upload_photo")
+def ask_photo(c):
+    uid = c.from_user.id
+    if isinstance(user_states.get(uid), dict):
+        bot.send_message(c.message.chat.id, "🖼 حالا تصویر رسید واریزی خود را ارسال کنید:")
+    else:
+        bot.send_message(c.message.chat.id, "❌ زمان شما منقضی شده، دوباره تلاش کنید.")
+
+# --- بقیه هندلرها (حساب، تعرفه، خرید و ...) ---
 @bot.callback_query_handler(func=lambda c: c.data == "account")
 def account(c):
     cursor.execute("SELECT * FROM users WHERE user_id=?", (c.from_user.id,))
@@ -103,7 +178,6 @@ def account(c):
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# --- بخش تعرفه و خرید ---
 @bot.callback_query_handler(func=lambda c: c.data in ["price_list", "buy_main"])
 def tariffs(c):
     kb = types.InlineKeyboardMarkup()
@@ -137,7 +211,6 @@ def list_vip(c):
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_main"))
     bot.edit_message_text("💰 لیست قیمت (با تخفیف ویژه VIP):", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# --- سیستم خرید نهایی ---
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order_"))
 def confirm_buy(c):
     _, price, name = c.data.split("_")
@@ -164,52 +237,9 @@ def final_buy(c):
     conn.commit()
     
     bot.edit_message_text("✅ در حال ساخت سرویس...", c.message.chat.id, c.message.message_id)
-    bot.send_message(ADMIN_ID, f"🛒 سفارش جدید!\n👤 کاربر: {uid}\n📦 محصول: {name}\n💰 قیمت: {price}")
+    bot.send_message(ADMIN_ID, f"🛒 سفارش جدید!\n👤 کاربر: {uid}\n📦 محصول: {name}\n💰 قیمت: {format_p(price)}")
     bot.send_message(uid, "🎉 خرید موفقیت‌آمیز بود! کانفیگ شما به زودی ارسال می‌شود.")
 
-# --- بخش شارژ (کارت به کارت) ---
-@bot.callback_query_handler(func=lambda c: c.data == "charge_start")
-def charge_1(c):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("💳 کارت به کارت", callback_data="c2c"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
-    bot.edit_message_text("لطفاً روش پرداخت را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data == "c2c")
-def charge_2(c):
-    msg = bot.send_message(c.message.chat.id, "💰 مبلغ به تومان را وارد کنید:")
-    bot.register_next_step_handler(msg, step_amount)
-
-def step_amount(m):
-    if not m.text.isdigit(): return bot.send_message(m.chat.id, "❌ فقط عدد!")
-    user_data[m.chat.id] = {'amt': int(m.text)}
-    msg = bot.send_message(m.chat.id, f"✅ مبلغ {format_p(m.text)} تومان تایید شد.\n💳 حالا شماره کارت مبدا را ارسال کنید:")
-    bot.register_next_step_handler(msg, step_card)
-
-def step_card(m):
-    user_data[m.chat.id]['card'] = m.text
-    amt = user_data[m.chat.id]['amt']
-    text = f"لطفاً دقیقا مبلغ {format_p(amt)} تومان به شماره کارت زیر واریز کنید:\n\n💳 6221061233705260\n👤 بنام: افراس\n\n📸 پس از واریز تصویر رسید را بفرستید.\n⏳ فاکتور تا ۳۰ دقیقه دیگر منقضی می‌شود."
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📤 ارسال رسید", callback_data="upload"))
-    bot.send_message(m.chat.id, text, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data == "upload")
-def upload(c):
-    msg = bot.send_message(c.message.chat.id, "🖼 تصویر رسید را ارسال کنید:")
-    bot.register_next_step_handler(msg, step_finish)
-
-def step_finish(m):
-    if not m.photo: return bot.send_message(m.chat.id, "❌ تصویر بفرستید!")
-    d = user_data[m.chat.id]
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ تایید", callback_data=f"adm_ok_{m.chat.id}_{d['amt']}"),
-           types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{m.chat.id}"))
-    
-    bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=f"💰 رسید جدید\nآیدی: {m.chat.id}\nمبلغ: {d['amt']}\nکارت: {d['card']}", reply_markup=kb)
-    bot.send_message(m.chat.id, "✅ رسید برای ادمین ارسال شد. پس از تایید حساب شما شارژ می‌شود.")
-
-# --- مدیریت ادمین ---
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_"))
 def admin_p(c):
     p = c.data.split("_")
@@ -218,30 +248,32 @@ def admin_p(c):
         amt = int(p[3])
         cursor.execute("UPDATE users SET balance=balance+?, success_payments=success_payments+1 WHERE user_id=?", (amt, uid))
         conn.commit()
-        bot.send_message(uid, "✅ رسید شما تایید و حساب شارژ شد!")
+        bot.send_message(uid, f"✅ تراکنش شما تایید شد!\nمبلغ {format_p(amt)} تومان به حساب شما اضافه شد.")
     elif p[1] == "warn":
         cursor.execute("UPDATE users SET warnings=warnings+1 WHERE user_id=?", (uid,))
         conn.commit()
-        bot.send_message(uid, "⚠️ اخطار! رسید ارسالی فیک بود. اخطار ثبت شد.")
-    bot.answer_callback_query(c.id, "انجام شد")
+        bot.send_message(uid, "⚠️ اخطار! رسید ارسالی مورد تایید نبود. اخطار برای شما ثبت شد.")
+    bot.answer_callback_query(c.id, "عملیات انجام شد")
 
-# --- پشتیبانی و بازگشت ---
 @bot.callback_query_handler(func=lambda c: c.data == "support")
 def support(c):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
-    bot.edit_message_text(f"📞 پشتیبانی:\n{SUPPORT_ID}", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.edit_message_text(f"📞 برای پشتیبانی به آیدی زیر پیام دهید:\n\n{SUPPORT_ID}", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "back_main")
 def back_main(c):
+    user_states[c.from_user.id] = None
     bot.edit_message_text("👇 منوی اصلی:", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
 
 # --- تنظیمات آنلاین ماندن ---
 @app.route('/')
-def home(): return "I'm alive"
+def home(): return "Bot is running..."
 
 def run(): app.run(host='0.0.0.0', port=8080)
 
 if __name__ == "__main__":
     Thread(target=run).start()
-    bot.infinity_polling()
+    bot.remove_webhook()
+    print("Bot is starting...")
+    bot.infinity_polling(skip_pending=True)
