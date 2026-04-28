@@ -1,47 +1,31 @@
 import telebot
 from telebot import types
 import sqlite3
-import time
 import os
-import threading
-from flask import Flask
 from datetime import datetime
+from flask import Flask
+from threading import Thread
 
-# --- بخش آنلاین نگه داشتن ربات (Flask) ---
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is Alive!"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = threading.Thread(target=run)
-    t.daemon = True
-    t.start()
-
-# --- تنظیمات اصلی ربات ---
-TOKEN = os.getenv("TOKEN") 
+# --- تنظیمات اولیه ---
+# توکن را در رندر با نام BOT_TOKEN تنظیم کنید
+TOKEN = os.getenv("BOT_TOKEN") 
 ADMIN_ID = 8521801987
-CHANNEL = "@rafe_filter_A"
-
-if TOKEN is None:
-    print("ERROR: TOKEN variable not found in Environment Settings!")
-    exit()
+CHANNEL_ID = "@rafe_filter_A"
+SUPPORT_ID = "@Amir_confing_meli"
 
 bot = telebot.TeleBot(TOKEN)
+app = Flask('')
 
-# ---------------- DATABASE ----------------
+# --- دیتابیس ---
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     balance INTEGER DEFAULT 0,
-    configs INTEGER DEFAULT 0,
+    configs_count INTEGER DEFAULT 0,
+    warnings INTEGER DEFAULT 0,
+    success_payments INTEGER DEFAULT 0,
     name TEXT,
     username TEXT,
     join_date TEXT
@@ -49,184 +33,215 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 conn.commit()
 
-user_state = {}
+user_data = {}
 
-# ---------------- FUNCTIONS ----------------
-def add_user(u):
-    try:
-        cursor.execute("SELECT * FROM users WHERE user_id=?", (u.id,))
-        if cursor.fetchone() is None:
-            cursor.execute(
-                "INSERT INTO users VALUES (?,?,?,?,?,?)",
-                (u.id,0,0,u.first_name,u.username,str(datetime.now()))
-            )
-            conn.commit()
-    except Exception as e:
-        print("DB ERROR:", e)
-
+# --- توابع کمکی ---
 def is_member(user_id):
     try:
-        m = bot.get_chat_member(CHANNEL, user_id)
-        return m.status in ["member", "creator", "administrator"]
+        status = bot.get_chat_member(CHANNEL_ID, user_id).status
+        return status in ['member', 'creator', 'administrator']
     except:
         return False
 
-def menu(chat_id):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🛒 خرید", callback_data="buy"))
-    kb.add(types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge"))
-    kb.add(types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account"))
-    kb.add(types.InlineKeyboardButton("📊 تعرفه", callback_data="price"))
-    kb.add(types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
-    bot.send_message(chat_id,"👇 پنل:",reply_markup=kb)
+def format_p(amount):
+    return "{:,}".format(amount)
 
-# ---------------- HANDLERS ----------------
+# --- کیبوردها ---
+def main_menu():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(types.InlineKeyboardButton("🛒 خرید سرویس", callback_data="buy_main"),
+           types.InlineKeyboardButton("📊 تعرفه", callback_data="price_list"))
+    kb.add(types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account"))
+    kb.add(types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge_start"))
+    kb.add(types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
+    return kb
+
+# --- هندلرهای اصلی ---
 @bot.message_handler(commands=['start'])
 def start(m):
-    add_user(m.from_user)
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL.replace('@','')}"))
-    kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check"))
-    bot.send_message(m.chat.id,"برای استفاده از ربات اول عضو کانال شو 👇",reply_markup=kb)
+    uid = m.from_user.id
+    # ثبت نام در دیتابیس
+    cursor.execute("SELECT * FROM users WHERE user_id=?", (uid,))
+    if cursor.fetchone() is None:
+        cursor.execute("INSERT INTO users VALUES (?,?,?,?,?,?,?,?)",
+                       (uid, 0, 0, 0, 0, m.from_user.first_name, m.from_user.username, datetime.now().strftime("%Y/%m/%d")))
+        conn.commit()
 
-@bot.callback_query_handler(func=lambda c:c.data=="check")
-def check(c):
-    if is_member(c.from_user.id):
-        menu(c.message.chat.id)
+    if not is_member(uid):
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
+        kb.add(types.InlineKeyboardButton("✅ عضو شدم (بررسی)", callback_data="check_join"))
+        bot.send_message(m.chat.id, "❌ برای استفاده از ربات باید ابتدا عضو کانال ما شوید:", reply_markup=kb)
     else:
-        bot.answer_callback_query(c.id,"❌ هنوز عضو نشدی",show_alert=True)
+        bot.send_message(m.chat.id, "👇 به پنل مدیریت خوش آمدید:", reply_markup=main_menu())
 
-@bot.callback_query_handler(func=lambda c:c.data=="menu")
-def back_to_menu(c):
-    menu(c.message.chat.id)
+@bot.callback_query_handler(func=lambda c: c.data == "check_join")
+def check_join(c):
+    if is_member(c.from_user.id):
+        bot.delete_message(c.message.chat.id, c.message.message_id)
+        bot.send_message(c.message.chat.id, "✅ عضویت تایید شد. خوش آمدید!", reply_markup=main_menu())
+    else:
+        bot.answer_callback_query(c.id, "❌ هنوز در کانال عضو نشده‌اید!", show_alert=True)
 
-@bot.callback_query_handler(func=lambda c:c.data=="buy")
-def buy(c):
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("۱ ماهه",callback_data="1m"))
-    kb.add(types.InlineKeyboardButton("♾ بدون محدودیت+VIP",callback_data="vip"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت",callback_data="menu"))
-    bot.edit_message_text("انتخاب پلن:",c.message.chat.id,c.message.message_id,reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c:c.data=="1m")
-def m1(c):
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("تک کاربره",callback_data="single"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت",callback_data="buy"))
-    bot.edit_message_text("نوع:",c.message.chat.id,c.message.message_id,reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c:c.data=="single")
-def single(c):
-    kb=types.InlineKeyboardMarkup()
-    for i in ["1","2","3","5"]:
-        kb.add(types.InlineKeyboardButton(f"{i} گیگ",callback_data=f"buy_{i}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت",callback_data="menu"))
-    bot.edit_message_text("حجم:",c.message.chat.id,c.message.message_id,reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c:c.data=="vip")
-def vip(c):
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("بدون محدودیت کاربری",callback_data="vip_user"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت",callback_data="buy"))
-    bot.edit_message_text("VIP:",c.message.chat.id,c.message.message_id,reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c:c.data=="vip_user")
-def vip_user(c):
-    kb=types.InlineKeyboardMarkup()
-    for i in ["1","2","3","5","10"]:
-        kb.add(types.InlineKeyboardButton(f"{i} گیگ",callback_data=f"vip_{i}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت",callback_data="menu"))
-    bot.edit_message_text("حجم:",c.message.chat.id,c.message.message_id,reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c:c.data.startswith("buy_") or c.data.startswith("vip_"))
-def confirm(c):
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ تایید",callback_data=f"ok_{c.data}"))
-    kb.add(types.InlineKeyboardButton("❌ لغو",callback_data="menu"))
-    bot.edit_message_text("آیا مطمئن هستید؟",c.message.chat.id,c.message.message_id,reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c:c.data.startswith("ok_"))
-def send_order(c):
-    data=c.data.replace("ok_","")
-    user=c.from_user.id
-    bot.send_message(ADMIN_ID,f"🛒 سفارش جدید\n👤 {user}\n📦 {data}")
-    bot.send_message(user,"⏳ سرور در حال آماده سازی است")
-
-@bot.callback_query_handler(func=lambda c:c.data=="charge")
-def charge(c):
-    msg=bot.send_message(c.message.chat.id,"💰 مبلغ به تومان:")
-    bot.register_next_step_handler(msg,get_amount)
-
-def get_amount(m):
-    try:
-        amount=int(m.text)
-        user_state[m.chat.id]={"amount":amount}
-        bot.send_message(m.chat.id,f"{amount} تومان\n💳 شماره کارت مبدا:")
-        bot.register_next_step_handler(m,get_card)
-    except:
-        return bot.send_message(m.chat.id,"❌ فقط عدد وارد کن")
-
-def get_card(m):
-    if m.chat.id in user_state:
-        user_state[m.chat.id]["card"]=m.text
-        amount=user_state[m.chat.id]["amount"]
-        kb=types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("📤 ارسال رسید",callback_data="receipt"))
-        bot.send_message(m.chat.id,f"💳 کارت مقصد:\n6221061233705260\nافراس\n\n💰 مبلغ: {amount} تومان",reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c:c.data=="receipt")
-def receipt(c):
-    msg=bot.send_message(c.message.chat.id,"📸 رسید را ارسال کن")
-    bot.register_next_step_handler(msg,send_receipt)
-
-def send_receipt(m):
-    data=user_state.get(m.chat.id)
-    if data:
-        kb=types.InlineKeyboardMarkup()
-        kb.add(
-            types.InlineKeyboardButton("✅ تایید",callback_data=f"okcharge_{m.chat.id}_{data['amount']}"),
-            types.InlineKeyboardButton("❌ رد",callback_data="reject")
-        )
-        bot.send_message(ADMIN_ID,f"💰 درخواست شارژ\n👤 {m.chat.id}\n💵 {data['amount']}",reply_markup=kb)
-        if m.photo:
-            bot.forward_message(ADMIN_ID,m.chat.id,m.message_id)
-        bot.send_message(m.chat.id,"✅ رسید ارسال شد")
-
-@bot.callback_query_handler(func=lambda c:c.data.startswith("okcharge_"))
-def confirm_charge(c):
-    if c.from_user.id!=ADMIN_ID: return
-    data=c.data.split("_")
-    uid=int(data[1])
-    amount=int(data[2])
-    cursor.execute("UPDATE users SET balance=balance+? WHERE user_id=?", (amount,uid))
-    conn.commit()
-    bot.send_message(uid,f"✅ {amount} تومان اضافه شد")
-
-@bot.callback_query_handler(func=lambda c:c.data=="account")
+# --- بخش حساب کاربری ---
+@bot.callback_query_handler(func=lambda c: c.data == "account")
 def account(c):
     cursor.execute("SELECT * FROM users WHERE user_id=?", (c.from_user.id,))
-    d=cursor.fetchone()
-    if d:
-        username = f"@{d[4]}" if d[4] else "ندارد"
-        bot.send_message(c.message.chat.id,f"📊 اطلاعات حساب:\n🆔 {d[0]}\n👤 {username}\n💰 {d[1]} تومان\n📦 {d[2]}\n📅 {d[5]}")
-
-@bot.callback_query_handler(func=lambda c:c.data=="support")
-def support(c):
-    bot.send_message(c.message.chat.id,"📞 @Amir_confing_meli")
-
-@bot.callback_query_handler(func=lambda c:c.data=="price")
-def price(c):
-    bot.send_message(c.message.chat.id,"لیست قیمت‌ها در کانال موجود است.")
-
-# ---------------- RUN ----------------
-if __name__ == "__main__":
-    print("Starting Keep Alive Server...")
-    keep_alive() # وب‌سرویس برای رندر
+    d = cursor.fetchone()
+    text = f"""📊 اطلاعات حساب کاربری شما:
     
-    print("Bot is starting...")
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=1, timeout=60)
-        except Exception as e:
-            print("CRASH:", e)
-            time.sleep(3)
+🔢 آیدی عددی : {d[0]}
+🔆 یوزرنیم : @{d[6] if d[6] else "ثبت نشده"}
+💰 موجودی : {format_p(d[1])} تومان
+🏦 پرداخت های موفق : {d[4]} عدد
+🛍 تعداد سرویس ها : {d[2]} عدد
+⚠️ تعداد اخطار ها : {d[3]} عدد
+⏰ تاریخ عضویت : {d[7]}
+
+🤖 | @rafe_filter"""
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
+    bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+# --- بخش تعرفه و خرید ---
+@bot.callback_query_handler(func=lambda c: c.data in ["price_list", "buy_main"])
+def tariffs(c):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("1️⃣ یک ماهه", callback_data="cat_1month"))
+    kb.add(types.InlineKeyboardButton("💎 بدون محدودیت زمانی+VIP", callback_data="cat_vip"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
+    bot.edit_message_text("لطفاً دسته بندی مورد نظر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "cat_1month")
+def cat_1m(c):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="list_1m_single"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_main"))
+    bot.edit_message_text("سرویس‌های یک ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "list_1m_single")
+def list_1m(c):
+    prices = {"1G": 350000, "2G": 699000, "3G": 999000, "5G": 1499000}
+    kb = types.InlineKeyboardMarkup()
+    for k, v in prices.items():
+        kb.add(types.InlineKeyboardButton(f"🔹 {k} : {format_p(v)} تومان", callback_data=f"order_{v}_{k}"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="cat_1month"))
+    bot.edit_message_text("💰 لیست قیمت سرویس‌های یک ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "cat_vip")
+def list_vip(c):
+    prices = {"1G": 600000, "2G": 1199000, "3G": 1799000, "5G": 2999000, "10G": 5499000}
+    kb = types.InlineKeyboardMarkup()
+    for k, v in prices.items():
+        kb.add(types.InlineKeyboardButton(f"🔹 {k} : {format_p(v)} تومان", callback_data=f"order_{v}_{k}"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_main"))
+    bot.edit_message_text("💰 لیست قیمت (با تخفیف ویژه VIP):", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+# --- سیستم خرید نهایی ---
+@bot.callback_query_handler(func=lambda c: c.data.startswith("order_"))
+def confirm_buy(c):
+    _, price, name = c.data.split("_")
+    price = int(price)
+    cursor.execute("SELECT balance FROM users WHERE user_id=?", (c.from_user.id,))
+    balance = cursor.fetchone()[0]
+
+    if balance < price:
+        bot.answer_callback_query(c.id, "❌ موجودی کافی نیست! لطفا حساب خود را شارژ کنید.", show_alert=True)
+    else:
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🟢 تایید خرید", callback_data=f"final_{price}_{name}"),
+               types.InlineKeyboardButton("🔴 لغو", callback_data="back_main"))
+        bot.edit_message_text(f"آیا از خرید سرویس {name} به مبلغ {format_p(price)} تومان اطمینان دارید؟", 
+                              c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("final_"))
+def final_buy(c):
+    _, price, name = c.data.split("_")
+    price = int(price)
+    uid = c.from_user.id
+    
+    cursor.execute("UPDATE users SET balance = balance - ?, configs_count = configs_count + 1 WHERE user_id = ?", (price, uid))
+    conn.commit()
+    
+    bot.edit_message_text("✅ در حال ساخت سرویس...", c.message.chat.id, c.message.message_id)
+    bot.send_message(ADMIN_ID, f"🛒 سفارش جدید!\n👤 کاربر: {uid}\n📦 محصول: {name}\n💰 قیمت: {price}")
+    bot.send_message(uid, "🎉 خرید موفقیت‌آمیز بود! کانفیگ شما به زودی ارسال می‌شود.")
+
+# --- بخش شارژ (کارت به کارت) ---
+@bot.callback_query_handler(func=lambda c: c.data == "charge_start")
+def charge_1(c):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("💳 کارت به کارت", callback_data="c2c"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
+    bot.edit_message_text("لطفاً روش پرداخت را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "c2c")
+def charge_2(c):
+    msg = bot.send_message(c.message.chat.id, "💰 مبلغ به تومان را وارد کنید:")
+    bot.register_next_step_handler(msg, step_amount)
+
+def step_amount(m):
+    if not m.text.isdigit(): return bot.send_message(m.chat.id, "❌ فقط عدد!")
+    user_data[m.chat.id] = {'amt': int(m.text)}
+    msg = bot.send_message(m.chat.id, f"✅ مبلغ {format_p(m.text)} تومان تایید شد.\n💳 حالا شماره کارت مبدا را ارسال کنید:")
+    bot.register_next_step_handler(msg, step_card)
+
+def step_card(m):
+    user_data[m.chat.id]['card'] = m.text
+    amt = user_data[m.chat.id]['amt']
+    text = f"لطفاً دقیقا مبلغ {format_p(amt)} تومان به شماره کارت زیر واریز کنید:\n\n💳 6221061233705260\n👤 بنام: افراس\n\n📸 پس از واریز تصویر رسید را بفرستید.\n⏳ فاکتور تا ۳۰ دقیقه دیگر منقضی می‌شود."
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("📤 ارسال رسید", callback_data="upload"))
+    bot.send_message(m.chat.id, text, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "upload")
+def upload(c):
+    msg = bot.send_message(c.message.chat.id, "🖼 تصویر رسید را ارسال کنید:")
+    bot.register_next_step_handler(msg, step_finish)
+
+def step_finish(m):
+    if not m.photo: return bot.send_message(m.chat.id, "❌ تصویر بفرستید!")
+    d = user_data[m.chat.id]
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("✅ تایید", callback_data=f"adm_ok_{m.chat.id}_{d['amt']}"),
+           types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{m.chat.id}"))
+    
+    bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=f"💰 رسید جدید\nآیدی: {m.chat.id}\nمبلغ: {d['amt']}\nکارت: {d['card']}", reply_markup=kb)
+    bot.send_message(m.chat.id, "✅ رسید برای ادمین ارسال شد. پس از تایید حساب شما شارژ می‌شود.")
+
+# --- مدیریت ادمین ---
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_"))
+def admin_p(c):
+    p = c.data.split("_")
+    uid = int(p[2])
+    if p[1] == "ok":
+        amt = int(p[3])
+        cursor.execute("UPDATE users SET balance=balance+?, success_payments=success_payments+1 WHERE user_id=?", (amt, uid))
+        conn.commit()
+        bot.send_message(uid, "✅ رسید شما تایید و حساب شارژ شد!")
+    elif p[1] == "warn":
+        cursor.execute("UPDATE users SET warnings=warnings+1 WHERE user_id=?", (uid,))
+        conn.commit()
+        bot.send_message(uid, "⚠️ اخطار! رسید ارسالی فیک بود. اخطار ثبت شد.")
+    bot.answer_callback_query(c.id, "انجام شد")
+
+# --- پشتیبانی و بازگشت ---
+@bot.callback_query_handler(func=lambda c: c.data == "support")
+def support(c):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back_main"))
+    bot.edit_message_text(f"📞 پشتیبانی:\n{SUPPORT_ID}", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "back_main")
+def back_main(c):
+    bot.edit_message_text("👇 منوی اصلی:", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
+
+# --- تنظیمات آنلاین ماندن ---
+@app.route('/')
+def home(): return "I'm alive"
+
+def run(): app.run(host='0.0.0.0', port=8080)
+
+if __name__ == "__main__":
+    Thread(target=run).start()
+    bot.infinity_polling()
