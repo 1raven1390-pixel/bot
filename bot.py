@@ -2,12 +2,19 @@ import telebot
 from telebot import types
 import sqlite3
 import time
+import os  # برای خواندن توکن از تنظیمات رندر
 from datetime import datetime
-import os
 
-TOKEN = os.getenv("8695463789:AAF7vKrNUtp05Nm5ydsEY6W8qeUYJ45KXoE")
+# --- تنظیمات امنیتی ---
+# حالا کد توکن را از بخش Environment در رندر می‌خواند
+TOKEN = os.getenv("TOKEN") 
 ADMIN_ID = 8521801987
 CHANNEL = "@rafe_filter_A"
+
+# بررسی اینکه آیا توکن وجود دارد یا خیر
+if TOKEN is None:
+    print("ERROR: TOKEN variable not found in Environment Settings!")
+    exit()
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -205,10 +212,9 @@ def confirm_charge(c):
 def account(c):
     cursor.execute("SELECT * FROM users WHERE user_id=?", (c.from_user.id,))
     d=cursor.fetchone()
-
-    username = f"@{d[4]}" if d[4] else "ندارد"
-
-    bot.send_message(c.message.chat.id,f"""
+    if d:
+        username = f"@{d[4]}" if d[4] else "ندارد"
+        bot.send_message(c.message.chat.id,f"""
 📊 اطلاعات حساب:
 🆔 {d[0]}
 👤 {username}
@@ -223,7 +229,7 @@ def support(c):
     bot.send_message(c.message.chat.id,"📞 @Amir_confing_meli")
 
 # ---------------- RUN ----------------
-print("Bot is running...")
+print("Bot is starting...")
 
 while True:
     try:
