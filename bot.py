@@ -14,64 +14,45 @@ SUPPORT_ID = "@Amir_confing_meli"
 bot = telebot.TeleBot(TOKEN)
 app = Flask('')
 
-# ---------------- DB (اصلاح شده برای امنیت داده‌ها) ----------------
+# ---------------- DB ----------------
 
-# استفاده از مسیر مطلق برای جلوگیری از گم شدن فایل دیتابیس در رندر
 db_path = os.path.join(os.getcwd(), "bot.db")
 conn = sqlite3.connect(db_path, check_same_thread=False)
 cursor = conn.cursor()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-user_id INTEGER PRIMARY KEY,
-balance INTEGER DEFAULT 0,
-configs_count INTEGER DEFAULT 0,
-warnings INTEGER DEFAULT 0,
-success_payments INTEGER DEFAULT 0,
-name TEXT,
-username TEXT,
-join_date TEXT
-)
-""")
+# ایجاد جداول قبلی
+cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, configs_count INTEGER DEFAULT 0, warnings INTEGER DEFAULT 0, success_payments INTEGER DEFAULT 0, name TEXT, username TEXT, join_date TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, plan TEXT, volume TEXT, price INTEGER, status TEXT, created_at TEXT)")
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS orders (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-user_id INTEGER,
-plan TEXT,
-volume TEXT,
-price INTEGER,
-status TEXT, 
-created_at TEXT
-)
-""")
+# ایجاد جدول تنظیمات برای مدیریت فروش
+cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER DEFAULT 1)")
+conn.commit()
+
+# مقداردهی اولیه تنظیمات (اگر وجود نداشته باشند)
+for s in ['sale_month', 'sale_vip', 'charge_status']:
+    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, 1)", (s,))
 conn.commit()
 
 # --------------- STATE ---------------
-
 user_states = {}
 
 # --------------- UTILS ---------------
 
+def get_setting(key):
+    cursor.execute("SELECT value FROM settings WHERE key=?", (key,))
+    return cursor.fetchone()[0] == 1
+
 def format_p(x):
-    try:
-        return "{:,}".format(int(x))
-    except:
-        return "0"
+    try: return "{:,}".format(int(x))
+    except: return "0"
 
 def now_str():
     return datetime.now().strftime("%Y/%m/%d - %H:%M:%S")
 
 def main_menu():
     kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton("🛒 خرید سرور", callback_data="buy"),
-        types.InlineKeyboardButton("📊 تعرفه", callback_data="price")
-    )
-    kb.add(
-        types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge"),
-        types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account")
-    )
+    kb.add(types.InlineKeyboardButton("🛒 خرید سرور", callback_data="buy"), types.InlineKeyboardButton("📊 تعرفه", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge"), types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account"))
     kb.add(types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
     return kb
 
@@ -84,8 +65,7 @@ def is_member(user_id):
     try:
         st = bot.get_chat_member(CHANNEL_ID, user_id).status
         return st in ['member', 'creator', 'administrator']
-    except:
-        return True
+    except: return True
 
 # --------------- START & ADMIN COMMAND ---------------
 
@@ -114,19 +94,50 @@ def admin_panel(m):
     kb.add(types.InlineKeyboardButton("📦 سفارشات باز", callback_data="adm_orders"))
     kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user"))
     kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast"))
+    kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings")) # دکمه جدید
     bot.send_message(m.chat.id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_join")
 def check_join(c):
     if is_member(c.from_user.id):
         bot.edit_message_text("✅ تایید شد", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
-    else:
-        bot.answer_callback_query(c.id, "هنوز عضو نشدی", show_alert=True)
+    else: bot.answer_callback_query(c.id, "هنوز عضو نشدی", show_alert=True)
+
+# --------------- ADMIN SETTINGS (MANAGEMENT) ---------------
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_settings")
+def adm_settings(c):
+    if c.from_user.id != ADMIN_ID: return
+    m_status = "✅ باز" if get_setting('sale_month') else "❌ بسته"
+    v_status = "✅ باز" if get_setting('sale_vip') else "❌ بسته"
+    c_status = "✅ باز" if get_setting('charge_status') else "❌ بسته"
+    
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"فروش ۱ ماهه: {m_status}", callback_data="tog_sale_month"))
+    kb.add(types.InlineKeyboardButton(f"فروش VIP: {v_status}", callback_data="tog_sale_vip"))
+    kb.add(types.InlineKeyboardButton(f"افزایش موجودی: {c_status}", callback_data="tog_charge_status"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
+    bot.edit_message_text("⚙️ مدیریت وضعیت خدمات:\n(با کلیک روی هر دکمه وضعیت آن عوض می‌شود)", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("tog_"))
+def toggle_settings(c):
+    if c.from_user.id != ADMIN_ID: return
+    key = c.data.replace("tog_", "")
+    cursor.execute("UPDATE settings SET value = 1 - value WHERE key = ?", (key,))
+    conn.commit()
+    adm_settings(c) # رفرش منو
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_back")
+def admin_back(c):
+    admin_panel(c.message)
 
 # --------------- CHARGE ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "charge")
 def charge(c):
+    if not get_setting('charge_status'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر بخش افزایش موجودی موقتاً بسته است.", show_alert=True)
+        return
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("💳 کارت به کارت", callback_data="c2c"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
@@ -164,8 +175,7 @@ def send_receipt(c):
 @bot.message_handler(content_types=['photo'])
 def receipt(m):
     data = user_states.get(m.from_user.id)
-    if not data or data.get("state") != "WAIT_RECEIPT":
-        return
+    if not data or data.get("state") != "WAIT_RECEIPT": return
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ تایید", callback_data=f"ok_{m.from_user.id}_{data['amount']}"), types.InlineKeyboardButton("❌ رد", callback_data=f"no_{m.from_user.id}"))
     bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=f"💰 درخواست شارژ\n\n👤 کاربر: {m.from_user.id}\n💵 مبلغ: {format_p(data['amount'])}\n💳 کارت مبدا: {data['card']}", reply_markup=kb)
@@ -234,6 +244,9 @@ def buy(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_month")
 def buy_month(c):
+    if not get_setting('sale_month'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش پلن‌های ۱ ماهه بسته است.", show_alert=True)
+        return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"MONTH"}
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="buy_month_single"))
@@ -249,6 +262,9 @@ def buy_month_single(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_vip")
 def buy_vip(c):
+    if not get_setting('sale_vip'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش پلن‌های VIP بسته است.", show_alert=True)
+        return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"VIP"}
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("♾ بدون محدودیت کاربری", callback_data="buy_vip_unlim"))
@@ -272,8 +288,7 @@ def select_volume(c):
     cursor.execute("SELECT balance FROM users WHERE user_id=?", (uid,))
     balance = cursor.fetchone()[0]
     if balance < price:
-        bot.answer_callback_query(c.id, "❌ موجودی کافی نمی‌باشد", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "❌ موجودی کافی نمی‌باشد", show_alert=True); return
     user_states[uid] = {"state":"CONFIRM_BUY","plan":plan,"volume":volume,"price":price}
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ تایید", callback_data="final_buy"), types.InlineKeyboardButton("❌ لغو", callback_data="back"))
@@ -290,7 +305,6 @@ def final_buy(c):
     order_id = cursor.lastrowid
     conn.commit()
     bot.send_message(uid, "⏳ سفارش شما ثبت شد. در حال ساخت کانفیگ...")
-    
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📤 ارسال کانفیگ", callback_data=f"sendcfg_{order_id}"))
     bot.send_message(ADMIN_ID, f"🛒 سفارش جدید\n\n🆔 OrderID: {order_id}\n👤 کاربر: {uid}\n📦 پلن: {data['plan']}\n📊 حجم: {data['volume']}\n💵 مبلغ: {format_p(price)}", reply_markup=kb)
@@ -315,12 +329,9 @@ def start_send_config(c):
 def send_config_to_user(m):
     if m.text == "/admin":
         user_states[ADMIN_ID] = None
-        admin_panel(m)
-        return
-
+        admin_panel(m); return
     data = user_states.get(ADMIN_ID)
-    order_id = data["order_id"]
-    user_id = data["user_id"]
+    order_id = data["order_id"]; user_id = data["user_id"]
     bot.send_message(user_id, f"✅ کانفیگ شما:\n\n{m.text}")
     cursor.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
     conn.commit()
