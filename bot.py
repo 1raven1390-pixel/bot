@@ -1,6 +1,6 @@
 import telebot
 from telebot import types
-import sqlite3
+from pymongo import MongoClient # تغییر یافت
 import os
 from datetime import datetime, timedelta
 from flask import Flask
@@ -14,24 +14,21 @@ SUPPORT_ID = "@Amir_confing_meli"
 bot = telebot.TeleBot(TOKEN)
 app = Flask('')
 
-# ---------------- DB ----------------
+# ---------------- DB (Changed to MongoDB) ----------------
 
-db_path = os.path.join(os.getcwd(), "bot.db")
-conn = sqlite3.connect(db_path, check_same_thread=False)
-cursor = conn.cursor()
+# اتصال به دیتابیس ابری شما
+MONGO_URI = "mongodb+srv://1raven1390_db_user:iOlmB4Azr3SrrkVZ@bot.te88ask.mongodb.net/?retryWrites=true&w=majority&appName=Bot"
+client = MongoClient(MONGO_URI)
+db = client['telegram_bot']
 
-# ایجاد جداول قبلی
-cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, configs_count INTEGER DEFAULT 0, warnings INTEGER DEFAULT 0, success_payments INTEGER DEFAULT 0, name TEXT, username TEXT, join_date TEXT)")
-cursor.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, plan TEXT, volume TEXT, price INTEGER, status TEXT, created_at TEXT)")
-
-# ایجاد جدول تنظیمات برای مدیریت فروش
-cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER DEFAULT 1)")
-conn.commit()
+users_col = db['users']
+orders_col = db['orders']
+settings_col = db['settings']
 
 # مقداردهی اولیه تنظیمات (اگر وجود نداشته باشند)
 for s in ['sale_month', 'sale_vip', 'charge_status']:
-    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, 1)", (s,))
-conn.commit()
+    if not settings_col.find_one({"key": s}):
+        settings_col.insert_one({"key": s, "value": 1})
 
 # --------------- STATE ---------------
 user_states = {}
@@ -39,8 +36,8 @@ user_states = {}
 # --------------- UTILS ---------------
 
 def get_setting(key):
-    cursor.execute("SELECT value FROM settings WHERE key=?", (key,))
-    return cursor.fetchone()[0] == 1
+    res = settings_col.find_one({"key": key})
+    return res['value'] == 1 if res else True
 
 def format_p(x):
     try: return "{:,}".format(int(x))
@@ -72,10 +69,13 @@ def is_member(user_id):
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = m.from_user.id
-    cursor.execute("SELECT * FROM users WHERE user_id=?", (uid,))
-    if not cursor.fetchone():
-        cursor.execute("INSERT INTO users VALUES (?,?,?,?,?,?,?,?)", (uid, 0, 0, 0, 0, m.from_user.first_name or "", m.from_user.username or "", now_str()))
-        conn.commit()
+    user = users_col.find_one({"user_id": uid})
+    if not user:
+        users_col.insert_one({
+            "user_id": uid, "balance": 0, "configs_count": 0, "warnings": 0, 
+            "success_payments": 0, "name": m.from_user.first_name or "", 
+            "username": m.from_user.username or "", "join_date": now_str()
+        })
     if not is_member(uid):
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
@@ -87,15 +87,16 @@ def start(m):
 @bot.message_handler(commands=['admin'])
 def admin_panel(m):
     if m.from_user.id != ADMIN_ID: return
-    cursor.execute("SELECT COUNT() FROM users"); users = cursor.fetchone()[0]
-    cursor.execute("SELECT SUM(balance) FROM users"); total = cursor.fetchone()[0] or 0
-    cursor.execute("SELECT COUNT() FROM orders WHERE status='pending'"); pending = cursor.fetchone()[0]
+    users_count = users_col.count_documents({})
+    total_balance = list(users_col.aggregate([{"$group": {"_id": None, "total": {"$sum": "$balance"}}}]))
+    total = total_balance[0]['total'] if total_balance else 0
+    pending = orders_col.count_documents({"status": "pending"})
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📦 سفارشات باز", callback_data="adm_orders"))
     kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user"))
     kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast"))
-    kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings")) # دکمه جدید
-    bot.send_message(m.chat.id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
+    kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings"))
+    bot.send_message(m.chat.id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users_count}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_join")
 def check_join(c):
@@ -123,9 +124,9 @@ def adm_settings(c):
 def toggle_settings(c):
     if c.from_user.id != ADMIN_ID: return
     key = c.data.replace("tog_", "")
-    cursor.execute("UPDATE settings SET value = 1 - value WHERE key = ?", (key,))
-    conn.commit()
-    adm_settings(c) # رفرش منو
+    current = get_setting(key)
+    settings_col.update_one({"key": key}, {"$set": {"value": 0 if current else 1}})
+    adm_settings(c)
 
 @bot.callback_query_handler(func=lambda c: c.data == "admin_back")
 def admin_back(c):
@@ -186,15 +187,13 @@ def receipt(m):
 def ok(c):
     _, uid, amt = c.data.split("_")
     uid = int(uid); amt = int(amt)
-    cursor.execute("UPDATE users SET balance=balance+?, success_payments=success_payments+1 WHERE user_id=?", (amt, uid))
-    conn.commit()
+    users_col.update_one({"user_id": uid}, {"$inc": {"balance": amt, "success_payments": 1}})
     bot.send_message(uid, f"✅ مبلغ {format_p(amt)} تومان به حساب شما اضافه شد")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("no_"))
 def no(c):
     uid = int(c.data.split("_")[1])
-    cursor.execute("UPDATE users SET warnings=warnings+1 WHERE user_id=?", (uid,))
-    conn.commit()
+    users_col.update_one({"user_id": uid}, {"$inc": {"warnings": 1}})
     bot.send_message(uid, "❌ رسید شما رد شد و اخطار دریافت کردید")
 
 # --------------- PRICE ---------------
@@ -285,8 +284,8 @@ def select_volume(c):
     plan = st.get("plan")
     volume = c.data.split("_")[1]
     price = PRICES_MONTH.get(volume) if plan=="MONTH" else PRICES_VIP.get(volume)
-    cursor.execute("SELECT balance FROM users WHERE user_id=?", (uid,))
-    balance = cursor.fetchone()[0]
+    user = users_col.find_one({"user_id": uid})
+    balance = user['balance'] if user else 0
     if balance < price:
         bot.answer_callback_query(c.id, "❌ موجودی کافی نمی‌باشد", show_alert=True); return
     user_states[uid] = {"state":"CONFIRM_BUY","plan":plan,"volume":volume,"price":price}
@@ -300,10 +299,9 @@ def final_buy(c):
     data = user_states.get(uid, {})
     if data.get("state") != "CONFIRM_BUY": return
     price = data["price"]
-    cursor.execute("UPDATE users SET balance=balance-?, configs_count=configs_count+1 WHERE user_id=?", (price, uid))
-    cursor.execute("INSERT INTO orders (user_id,plan,volume,price,status,created_at) VALUES (?,?,?,?,?,?)", (uid, data["plan"], data["volume"], price, "pending", now_str()))
-    order_id = cursor.lastrowid
-    conn.commit()
+    users_col.update_one({"user_id": uid}, {"$inc": {"balance": -price, "configs_count": 1}})
+    res = orders_col.insert_one({"user_id": uid, "plan": data["plan"], "volume": data["volume"], "price": price, "status": "pending", "created_at": now_str()})
+    order_id = str(res.inserted_id)
     bot.send_message(uid, "⏳ سفارش شما ثبت شد. در حال ساخت کانفیگ...")
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📤 ارسال کانفیگ", callback_data=f"sendcfg_{order_id}"))
@@ -314,27 +312,27 @@ def final_buy(c):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("sendcfg_"))
 def start_send_config(c):
+    from bson.objectid import ObjectId
     if c.from_user.id != ADMIN_ID: return
-    order_id = int(c.data.split("_")[1])
-    cursor.execute("SELECT user_id, status FROM orders WHERE id=?", (order_id,))
-    row = cursor.fetchone()
-    if not row:
+    order_id_str = c.data.split("_")[1]
+    order = orders_col.find_one({"_id": ObjectId(order_id_str)})
+    if not order:
         bot.answer_callback_query(c.id, "سفارش پیدا نشد", show_alert=True); return
-    if row[1] != "pending":
+    if order['status'] != "pending":
         bot.answer_callback_query(c.id, "این سفارش قبلا انجام شده", show_alert=True); return
-    user_states[ADMIN_ID] = {"state": "SEND_CONFIG", "order_id": order_id, "user_id": row[0]}
+    user_states[ADMIN_ID] = {"state": "SEND_CONFIG", "order_id": order_id_str, "user_id": order['user_id']}
     bot.send_message(ADMIN_ID, "📤 کانفیگ رو ارسال کن:")
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "SEND_CONFIG")
 def send_config_to_user(m):
+    from bson.objectid import ObjectId
     if m.text == "/admin":
         user_states[ADMIN_ID] = None
         admin_panel(m); return
     data = user_states.get(ADMIN_ID)
     order_id = data["order_id"]; user_id = data["user_id"]
     bot.send_message(user_id, f"✅ کانفیگ شما:\n\n{m.text}")
-    cursor.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
-    conn.commit()
+    orders_col.update_one({"_id": ObjectId(order_id)}, {"$set": {"status": "done"}})
     bot.send_message(ADMIN_ID, f"✅ کانفیگ برای سفارش {order_id} ارسال شد")
     user_states[ADMIN_ID] = None
 
@@ -342,10 +340,9 @@ def send_config_to_user(m):
 
 @bot.callback_query_handler(func=lambda c: c.data == "account")
 def account(c):
-    cursor.execute("SELECT * FROM users WHERE user_id=?", (c.from_user.id,))
-    d = cursor.fetchone()
+    d = users_col.find_one({"user_id": c.from_user.id})
     username = f"@{c.from_user.username}" if c.from_user.username else "❌ ندارد"
-    text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 شماره : ❌ ثبت نشده است\n💰 موجودی : {format_p(d[1])} تومان\n🏦 پرداخت های موفق : {d[4]} عدد\n🛍 تعداد سرویس ها : {d[2]} عدد\n⚠️ تعداد اخطار ها : {d[3]} عدد\n⏰ تاریخ عضویت : {d[7]}\n\n🤖 | @rafe_filter_GB_bot"
+    text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 شماره : ❌ ثبت نشده است\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 # --------------- SUPPORT ---------------
@@ -365,11 +362,10 @@ def back(c):
 @bot.callback_query_handler(func=lambda c: c.data == "adm_orders")
 def adm_orders(c):
     if c.from_user.id != ADMIN_ID: return
-    cursor.execute("SELECT id,user_id,plan,volume,price,created_at FROM orders WHERE status='pending' ORDER BY id DESC LIMIT 20")
-    rows = cursor.fetchall()
+    rows = list(orders_col.find({"status": "pending"}).sort("_id", -1).limit(20))
     if not rows: bot.send_message(ADMIN_ID, "سفارشی وجود ندارد"); return
     txt = "📦 سفارشات باز:\n\n"
-    for r in rows: txt += f"ID:{r[0]} | U:{r[1]} | {r[2]} | {r[3]} | {format_p(r[4])}\n{r[5]}\n---\n"
+    for r in rows: txt += f"ID:{r['_id']} | U:{r['user_id']} | {r['plan']} | {r['volume']} | {format_p(r['price'])}\n{r['created_at']}\n---\n"
     bot.send_message(ADMIN_ID, txt)
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_get_user")
@@ -382,13 +378,12 @@ def adm_get_user(c):
 def adm_show_user(m):
     if not m.text.isdigit(): bot.send_message(ADMIN_ID, "آیدی نامعتبر"); return
     uid = int(m.text)
-    cursor.execute("SELECT * FROM users WHERE user_id=?", (uid,))
-    d = cursor.fetchone()
+    d = users_col.find_one({"user_id": uid})
     if not d: bot.send_message(ADMIN_ID, "کاربر یافت نشد"); return
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("➕ افزودن موجودی", callback_data=f"adm_add_{uid}"), types.InlineKeyboardButton("➖ کسر موجودی", callback_data=f"adm_sub_{uid}"))
     kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"))
-    bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d[1])}\n🏦 پرداخت موفق: {d[4]}\n🛍 سرویس‌ها: {d[2]}\n⚠️ اخطار: {d[3]}\n⏰ عضویت: {d[7]}", reply_markup=kb)
+    bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
     user_states[ADMIN_ID] = None
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_add_"))
@@ -409,8 +404,7 @@ def adm_sub(c):
 def adm_warn(c):
     if c.from_user.id != ADMIN_ID: return
     uid = int(c.data.split("_")[2])
-    cursor.execute("UPDATE users SET warnings=warnings+1 WHERE user_id=?", (uid,))
-    conn.commit()
+    users_col.update_one({"user_id": uid}, {"$inc": {"warnings": 1}})
     bot.send_message(uid, "⚠️ از سمت ادمین اخطار دریافت کردید")
     bot.answer_callback_query(c.id, "ثبت شد")
 
@@ -420,12 +414,11 @@ def adm_balance_edit(m):
     if not m.text.isdigit(): bot.send_message(ADMIN_ID, "عدد بفرست"); return
     amt = int(m.text); uid = st["uid"]
     if st["state"] == "ADM_ADD":
-        cursor.execute("UPDATE users SET balance=balance+? WHERE user_id=?", (amt, uid))
+        users_col.update_one({"user_id": uid}, {"$inc": {"balance": amt}})
         bot.send_message(uid, f"💰 {format_p(amt)} تومان به حسابت اضافه شد (ادمین)")
     else:
-        cursor.execute("UPDATE users SET balance=balance-? WHERE user_id=?", (amt, uid))
+        users_col.update_one({"user_id": uid}, {"$inc": {"balance": -amt}})
         bot.send_message(uid, f"💰 {format_p(amt)} تومان از حسابت کسر شد (ادمین)")
-    conn.commit()
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, "انجام شد")
 
@@ -437,11 +430,10 @@ def adm_broadcast(c):
 
 @bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_BC")
 def do_broadcast(m):
-    cursor.execute("SELECT user_id FROM users")
-    users = [r[0] for r in cursor.fetchall()]
+    users = users_col.find({}, {"user_id": 1})
     ok = 0
     for u in users:
-        try: bot.send_message(u, m.text); ok += 1
+        try: bot.send_message(u['user_id'], m.text); ok += 1
         except: pass
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, f"ارسال شد برای {ok} نفر")
@@ -449,7 +441,7 @@ def do_broadcast(m):
 # --------------- WEB ---------------
 
 @app.route('/')
-def home(): return "OK"
+def home(): return "OK - MongoDB Active"
 
 def run(): app.run(host="0.0.0.0", port=8080)
 
