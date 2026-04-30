@@ -30,6 +30,19 @@ for s in ['sale_month', 'sale_vip', 'charge_status', 'ref_status']: # ref_status
     if not settings_col.find_one({"key": s}):
         settings_col.insert_one({"key": s, "value": 1})
 
+# --- بخش جدید: مقداردهی اولیه قیمت‌ها در دیتابیس (بدون تغییر کدهای قبلی) ---
+default_prices = {
+    "PRICES_MONTH": {"1G":350000,"2G":699000,"3G":999000,"5G":1499000},
+    "PRICES_VIP": {"1G":599000,"2G":1198000,"3G":1797000,"5G":2899000,"10G":5299000}
+}
+for p_type, p_dict in default_prices.items():
+    if not settings_col.find_one({"key": p_type}):
+        settings_col.insert_one({"key": p_type, "value": p_dict})
+
+def get_db_prices(p_type):
+    res = settings_col.find_one({"key": p_type})
+    return res['value'] if res else default_prices[p_type]
+
 # --------------- STATE ---------------
 user_states = {}
 
@@ -119,6 +132,7 @@ def admin_panel(m):
     kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user"))
     kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast"))
     kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings"))
+    kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices")) # دکمه جدید
     bot.send_message(m.chat.id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users_count}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_join")
@@ -246,7 +260,8 @@ def price_month(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "show_month_prices")
 def show_month_prices(c):
-    txt = "📅 ۱ ماهه (تک کاربره)\n\n1گیگ : ۳۵۰,۰۰۰\n2گیگ : ۶۹۹,۰۰۰\n3گیگ : ۹۹۹,۰۰۰\n5گیگ : ۱,۴۹۹,۰۰۰"
+    p = get_db_prices("PRICES_MONTH")
+    txt = f"📅 ۱ ماهه (تک کاربره)\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}"
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_vip")
@@ -258,11 +273,13 @@ def price_vip(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "show_vip_prices")
 def show_vip_prices(c):
-    txt = "♾ بدون محدودیت + VIP (تخفیف)\n\n1گیگ : ۵۹۹,۰۰۰\n2گیگ : ۱,۱۹۸,۰۰۰\n3گیگ : ۱,۷۹۷,۰۰۰\n5گیگ : ۲,۸۹۹,۰۰۰\n10گیگ : ۵,۲۹۹,۰۰۰"
+    p = get_db_prices("PRICES_VIP")
+    txt = f"♾ بدون محدودیت + VIP (تخفیف)\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}\n10گیگ : {format_p(p['10G'])}"
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 # --------------- BUY ---------------
 
+# کد های زیر دیگر استفاده نمیشوند و از دیتابیس خوانده میشود (طبق خواسته شما دست نزدم)
 PRICES_MONTH = {"1G":350000,"2G":699000,"3G":999000,"5G":1499000}
 PRICES_VIP = {"1G":599000,"2G":1198000,"3G":1797000,"5G":2899000,"10G":5299000}
 
@@ -315,7 +332,11 @@ def select_volume(c):
     st = user_states.get(uid, {})
     plan = st.get("plan")
     volume = c.data.split("_")[1]
-    price = PRICES_MONTH.get(volume) if plan=="MONTH" else PRICES_VIP.get(volume)
+    
+    # دریافت قیمت بروز از دیتابیس
+    db_p = get_db_prices("PRICES_MONTH" if plan=="MONTH" else "PRICES_VIP")
+    price = db_p.get(volume)
+    
     user = users_col.find_one({"user_id": uid})
     balance = user['balance'] if user else 0
     if balance < price:
@@ -395,7 +416,7 @@ def send_config_to_user(m):
 def account(c):
     d = users_col.find_one({"user_id": c.from_user.id})
     username = f"@{c.from_user.username}" if c.from_user.username else "❌ ندارد"
-    status = "🚫 مسدود" if d.get("is_banned") else "✅ فعال"
+    status = "🚫 مسدود" if d.get("is_banned") or d.get("warnings", 0) >= 3 else "✅ فعال"
     text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 وضعیت : {status}\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
@@ -435,12 +456,15 @@ def adm_show_user(m):
     d = users_col.find_one({"user_id": uid})
     if not d: bot.send_message(ADMIN_ID, "کاربر یافت نشد"); return
     
-    ban_txt = "🔓 آن‌بن کردن" if d.get("is_banned") else "🚫 بن کردن"
+    # بهبود قابلیت آن‌بن: اگر کاربر اخطار هم داشته باشد، با دکمه آن‌بن آزاد شود
+    is_banned = d.get("is_banned") or d.get("warnings", 0) >= 3
+    ban_txt = "🔓 آن‌بن کردن" if is_banned else "🚫 بن کردن"
+    
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("➕ افزودن موجودی", callback_data=f"adm_add_{uid}"), types.InlineKeyboardButton("➖ کسر موجودی", callback_data=f"adm_sub_{uid}"))
     kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"), types.InlineKeyboardButton(ban_txt, callback_data=f"adm_ban_{uid}"))
     
-    bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if d.get('is_banned') else 'آزاد'}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
+    bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if is_banned else 'آزاد'}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
     user_states[ADMIN_ID] = None
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_ban_"))
@@ -448,11 +472,18 @@ def adm_ban_toggle(c):
     if c.from_user.id != ADMIN_ID: return
     uid = int(c.data.split("_")[2])
     user = users_col.find_one({"user_id": uid})
-    new_status = not user.get("is_banned", False)
-    users_col.update_one({"user_id": uid}, {"$set": {"is_banned": new_status}})
-    txt = "مسدود شد" if new_status else "آزاد شد"
+    
+    # منطق جدید: اگر بن بود (چه دستی چه با اخطار)، کلاً آزاد شود
+    current_ban = user.get("is_banned") or user.get("warnings", 0) >= 3
+    if current_ban:
+        users_col.update_one({"user_id": uid}, {"$set": {"is_banned": False, "warnings": 0}})
+        txt = "آزاد شد"
+    else:
+        users_col.update_one({"user_id": uid}, {"$set": {"is_banned": True}})
+        txt = "مسدود شد"
+        
     bot.answer_callback_query(c.id, f"کاربر {txt}")
-    bot.send_message(uid, f"⚠️ حساب شما توسط مدیریت {'مسدود' if new_status else 'آزاد'} شد.")
+    bot.send_message(uid, f"⚠️ حساب شما توسط مدیریت {txt} شد.")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_add_"))
 def adm_add(c):
@@ -505,6 +536,46 @@ def do_broadcast(m):
         except: pass
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, f"ارسال شد برای {ok} نفر")
+
+# --------------- بخش جدید: مدیریت قیمت‌ها توسط ادمین ---------------
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_change_prices")
+def adm_change_prices(c):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("📅 تغییر قیمت ۱ ماهه", callback_data="setp_MONTH"), 
+           types.InlineKeyboardButton("♾ تغییر قیمت VIP", callback_data="setp_VIP"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    bot.edit_message_text("کدام دسته بندی را تغییر میدهید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("setp_"))
+def adm_setp_plan(c):
+    plan = c.data.split("_")[1]
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    vols = ["1G","2G","3G","5G"] if plan=="MONTH" else ["1G","2G","3G","5G","10G"]
+    for v in vols:
+        kb.add(types.InlineKeyboardButton(v, callback_data=f"editp_{plan}_{v}"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_change_prices"))
+    bot.edit_message_text(f"تغییر قیمت کدام حجم از پلن {plan}؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("editp_"))
+def adm_editp_val(c):
+    _, plan, vol = c.data.split("_")
+    user_states[ADMIN_ID] = {"state": "SETTING_PRICE", "plan": plan, "vol": vol}
+    bot.send_message(ADMIN_ID, f"قیمت جدید برای {plan} {vol} را به عدد (تومان) وارد کنید:")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "SETTING_PRICE")
+def save_new_price(m):
+    if not m.text.isdigit(): bot.send_message(ADMIN_ID, "فقط عدد بفرستید"); return
+    new_p = int(m.text)
+    data = user_states[ADMIN_ID]
+    p_key = "PRICES_MONTH" if data['plan'] == "MONTH" else "PRICES_VIP"
+    
+    current_prices = get_db_prices(p_key)
+    current_prices[data['vol']] = new_p
+    settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
+    
+    bot.send_message(ADMIN_ID, f"✅ قیمت {data['plan']} {data['vol']} به {format_p(new_p)} تومان تغییر یافت.")
+    user_states[ADMIN_ID] = None
 
 # --------------- WEB ---------------
 
