@@ -26,7 +26,7 @@ orders_col = db['orders']
 settings_col = db['settings']
 
 # مقداردهی اولیه تنظیمات (اگر وجود نداشته باشند)
-for s in ['sale_month', 'sale_vip', 'charge_status']:
+for s in ['sale_month', 'sale_vip', 'charge_status', 'ref_status']: # ref_status اضافه شد
     if not settings_col.find_one({"key": s}):
         settings_col.insert_one({"key": s, "value": 1})
 
@@ -50,7 +50,7 @@ def main_menu():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🛒 خرید سرور", callback_data="buy"), types.InlineKeyboardButton("📊 تعرفه", callback_data="price"))
     kb.add(types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge"), types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account"))
-    kb.add(types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
+    kb.add(types.InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="referral"), types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
     return kb
 
 def back_kb():
@@ -69,13 +69,36 @@ def is_member(user_id):
 @bot.message_handler(commands=['start'])
 def start(m):
     uid = m.from_user.id
+    
+    # سیستم بن خودکار و دستی
+    user_check = users_col.find_one({"user_id": uid})
+    if user_check and (user_check.get("is_banned") or user_check.get("warnings", 0) >= 3):
+        bot.send_message(uid, "❌ حساب شما به دلیل تخلف (یا دریافت ۳ اخطار) مسدود شده است.")
+        return
+
+    # سیستم زیرمجموعه گیری
+    ref_by = None
+    if len(m.text.split()) > 1:
+        ref_by_id = m.text.split()[1]
+        if ref_by_id.isdigit():
+            ref_by = int(ref_by_id)
+            if ref_by == uid: ref_by = None
+
     user = users_col.find_one({"user_id": uid})
     if not user:
         users_col.insert_one({
             "user_id": uid, "balance": 0, "configs_count": 0, "warnings": 0, 
             "success_payments": 0, "name": m.from_user.first_name or "", 
-            "username": m.from_user.username or "", "join_date": now_str()
+            "username": m.from_user.username or "", "join_date": now_str(),
+            "invited_count": 0, "is_banned": False
         })
+        # اهدای پاداش دعوت
+        if ref_by and get_setting('ref_status'):
+            inviter = users_col.find_one({"user_id": ref_by})
+            if inviter and inviter.get('invited_count', 0) < 4:
+                users_col.update_one({"user_id": ref_by}, {"$inc": {"balance": 5000, "invited_count": 1}})
+                bot.send_message(ref_by, "🎉 تبریک! یک کاربر با لینک شما عضو شد و ۵,۰۰۰ تومان به موجودی شما اضافه شد.")
+
     if not is_member(uid):
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
@@ -112,11 +135,13 @@ def adm_settings(c):
     m_status = "✅ باز" if get_setting('sale_month') else "❌ بسته"
     v_status = "✅ باز" if get_setting('sale_vip') else "❌ بسته"
     c_status = "✅ باز" if get_setting('charge_status') else "❌ بسته"
+    r_status = "✅ باز" if get_setting('ref_status') else "❌ بسته"
     
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(f"فروش ۱ ماهه: {m_status}", callback_data="tog_sale_month"))
     kb.add(types.InlineKeyboardButton(f"فروش VIP: {v_status}", callback_data="tog_sale_vip"))
     kb.add(types.InlineKeyboardButton(f"افزایش موجودی: {c_status}", callback_data="tog_charge_status"))
+    kb.add(types.InlineKeyboardButton(f"سیستم دعوت: {r_status}", callback_data="tog_ref_status"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
     bot.edit_message_text("⚙️ مدیریت وضعیت خدمات:\n(با کلیک روی هر دکمه وضعیت آن عوض می‌شود)", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -193,8 +218,15 @@ def ok(c):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("no_"))
 def no(c):
     uid = int(c.data.split("_")[1])
+    # بن خودکار در صورت رسیدن اخطار به ۳
     users_col.update_one({"user_id": uid}, {"$inc": {"warnings": 1}})
-    bot.send_message(uid, "❌ رسید شما رد شد و اخطار دریافت کردید")
+    u_data = users_col.find_one({"user_id": uid})
+    warns = u_data.get("warnings", 0)
+    if warns >= 3:
+        users_col.update_one({"user_id": uid}, {"$set": {"is_banned": True}})
+        bot.send_message(uid, "❌ شما ۳ اخطار دریافت کردید و دسترسی شما به ربات برای همیشه مسدود شد.")
+    else:
+        bot.send_message(uid, f"❌ رسید شما رد شد و اخطار دریافت کردید. (تعداد اخطار: {warns} از ۳)")
 
 # --------------- PRICE ---------------
 
@@ -308,6 +340,27 @@ def final_buy(c):
     bot.send_message(ADMIN_ID, f"🛒 سفارش جدید\n\n🆔 OrderID: {order_id}\n👤 کاربر: {uid}\n📦 پلن: {data['plan']}\n📊 حجم: {data['volume']}\n💵 مبلغ: {format_p(price)}", reply_markup=kb)
     user_states[uid] = None
 
+# --------------- REFERRAL SYSTEM ---------------
+
+@bot.callback_query_handler(func=lambda c: c.data == "referral")
+def referral_panel(c):
+    if not get_setting('ref_status'):
+        bot.answer_callback_query(c.id, "⚠️ این بخش در حال حاضر توسط ادمین بسته شده است.", show_alert=True)
+        return
+    uid = c.from_user.id
+    user = users_col.find_one({"user_id": uid})
+    count = user.get("invited_count", 0)
+    bot_user = bot.get_me().username
+    link = f"https://t.me/{bot_user}?start={uid}"
+    
+    text = f"👥 سیستم زیرمجموعه‌گیری\n\n"
+    text += f"با دعوت دوستان خود به ربات، برای هر نفر ۵,۰۰۰ تومان هدیه بگیرید.\n\n"
+    text += f"✅ تعداد دعوت‌های موفق شما: {count} از ۴\n"
+    text += f"🔗 لینک دعوت اختصاصی شما:\n`{link}`\n\n"
+    text += f"⚠️ سقف دعوت برای هر کاربر ۴ نفر می‌باشد."
+    
+    bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb(), parse_mode="Markdown")
+
 # --------------- ADMIN CONFIG SENDING ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("sendcfg_"))
@@ -342,7 +395,8 @@ def send_config_to_user(m):
 def account(c):
     d = users_col.find_one({"user_id": c.from_user.id})
     username = f"@{c.from_user.username}" if c.from_user.username else "❌ ندارد"
-    text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 شماره : ❌ ثبت نشده است\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
+    status = "🚫 مسدود" if d.get("is_banned") else "✅ فعال"
+    text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 وضعیت : {status}\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 # --------------- SUPPORT ---------------
@@ -380,11 +434,25 @@ def adm_show_user(m):
     uid = int(m.text)
     d = users_col.find_one({"user_id": uid})
     if not d: bot.send_message(ADMIN_ID, "کاربر یافت نشد"); return
+    
+    ban_txt = "🔓 آن‌بن کردن" if d.get("is_banned") else "🚫 بن کردن"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("➕ افزودن موجودی", callback_data=f"adm_add_{uid}"), types.InlineKeyboardButton("➖ کسر موجودی", callback_data=f"adm_sub_{uid}"))
-    kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"))
-    bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
+    kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"), types.InlineKeyboardButton(ban_txt, callback_data=f"adm_ban_{uid}"))
+    
+    bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if d.get('is_banned') else 'آزاد'}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
     user_states[ADMIN_ID] = None
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_ban_"))
+def adm_ban_toggle(c):
+    if c.from_user.id != ADMIN_ID: return
+    uid = int(c.data.split("_")[2])
+    user = users_col.find_one({"user_id": uid})
+    new_status = not user.get("is_banned", False)
+    users_col.update_one({"user_id": uid}, {"$set": {"is_banned": new_status}})
+    txt = "مسدود شد" if new_status else "آزاد شد"
+    bot.answer_callback_query(c.id, f"کاربر {txt}")
+    bot.send_message(uid, f"⚠️ حساب شما توسط مدیریت {'مسدود' if new_status else 'آزاد'} شد.")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_add_"))
 def adm_add(c):
