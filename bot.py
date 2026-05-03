@@ -9,6 +9,7 @@ from threading import Thread
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8521801987
 CHANNEL_ID = "@rafe_filter_A"
+GROUP_ID = "@GP_config_A" # اضافه شد
 SUPPORT_ID = "@Amir_confing_meli"
 
 bot = telebot.TeleBot(TOKEN)
@@ -73,8 +74,11 @@ def back_kb():
 
 def is_member(user_id):
     try:
-        st = bot.get_chat_member(CHANNEL_ID, user_id).status
-        return st in ['member', 'creator', 'administrator']
+        # چک کردن کانال
+        st_c = bot.get_chat_member(CHANNEL_ID, user_id).status
+        # چک کردن گروه
+        st_g = bot.get_chat_member(GROUP_ID, user_id).status
+        return st_c in ['member', 'creator', 'administrator'] and st_g in ['member', 'creator', 'administrator']
     except: return True
 
 # --------------- START & ADMIN COMMAND ---------------
@@ -115,8 +119,9 @@ def start(m):
     if not is_member(uid):
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
+        kb.add(types.InlineKeyboardButton("👥 عضویت در گروه", url=f"https://t.me/{GROUP_ID.replace('@','')}"))
         kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join"))
-        bot.send_message(uid, "برای استفاده ابتدا عضو کانال شوید:", reply_markup=kb)
+        bot.send_message(uid, "برای استفاده ابتدا عضو کانال و گروه ما شوید:", reply_markup=kb)
         return
     bot.send_message(uid, "👇 منوی اصلی:", reply_markup=main_menu())
 
@@ -139,7 +144,7 @@ def admin_panel(m):
 def check_join(c):
     if is_member(c.from_user.id):
         bot.edit_message_text("✅ تایید شد", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
-    else: bot.answer_callback_query(c.id, "هنوز عضو نشدی", show_alert=True)
+    else: bot.answer_callback_query(c.id, "هنوز عضو کانال یا گروه نشدی", show_alert=True)
 
 # --------------- ADMIN SETTINGS (MANAGEMENT) ---------------
 
@@ -463,6 +468,7 @@ def adm_show_user(m):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("➕ افزودن موجودی", callback_data=f"adm_add_{uid}"), types.InlineKeyboardButton("➖ کسر موجودی", callback_data=f"adm_sub_{uid}"))
     kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"), types.InlineKeyboardButton(ban_txt, callback_data=f"adm_ban_{uid}"))
+    kb.add(types.InlineKeyboardButton("📩 پیام خصوصی", callback_data=f"adm_pmsg_{uid}")) # اضافه شد
     
     bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if is_banned else 'آزاد'}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
     user_states[ADMIN_ID] = None
@@ -506,6 +512,23 @@ def adm_warn(c):
     users_col.update_one({"user_id": uid}, {"$inc": {"warnings": 1}})
     bot.send_message(uid, "⚠️ از سمت ادمین اخطار دریافت کردید")
     bot.answer_callback_query(c.id, "ثبت شد")
+
+# --- بخش جدید: ارسال پیام خصوصی توسط ادمین ---
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_pmsg_"))
+def adm_pmsg_start(c):
+    if c.from_user.id != ADMIN_ID: return
+    uid = c.data.split("_")[2]
+    user_states[ADMIN_ID] = {"state": "ADM_SEND_PMSG", "target": uid}
+    bot.send_message(ADMIN_ID, f"پیام خود را برای کاربر {uid} بنویسید:")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SEND_PMSG")
+def adm_pmsg_send(m):
+    target = user_states[ADMIN_ID]["target"]
+    try:
+        bot.send_message(target, f"📩 پیام جدید از مدیریت:\n\n{m.text}")
+        bot.send_message(ADMIN_ID, "✅ با موفقیت ارسال شد")
+    except: bot.send_message(ADMIN_ID, "❌ ارسال ناموفق (شاید بلاک کرده)")
+    user_states[ADMIN_ID] = None
 
 @bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") in ["ADM_ADD","ADM_SUB"])
 def adm_balance_edit(m):
