@@ -9,7 +9,6 @@ from threading import Thread
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8521801987
 CHANNEL_ID = "@rafe_filter_A"
-NEW_CHANNEL_ID = "@lostmooz_" # کانال جدید
 GROUP_ID = "@GP_config_A" # اضافه شد
 SUPPORT_ID = "@Amir_confing_meli"
 
@@ -75,17 +74,11 @@ def back_kb():
 
 def is_member(user_id):
     try:
-        # چک کردن کانال اول
+        # چک کردن کانال
         st_c = bot.get_chat_member(CHANNEL_ID, user_id).status
-        # چک کردن کانال جدید
-        st_c2 = bot.get_chat_member(NEW_CHANNEL_ID, user_id).status
         # چک کردن گروه
         st_g = bot.get_chat_member(GROUP_ID, user_id).status
-        
-        # لیست وضعیت‌های مجاز
-        allowed = ['member', 'creator', 'administrator']
-        
-        return (st_c in allowed and st_c2 in allowed and st_g in allowed)
+        return st_c in ['member', 'creator', 'administrator'] and st_g in ['member', 'creator', 'administrator']
     except: return True
 
 # --------------- START & ADMIN COMMAND ---------------
@@ -124,13 +117,11 @@ def start(m):
                 bot.send_message(ref_by, "🎉 تبریک! یک کاربر با لینک شما عضو شد و ۵,۰۰۰ تومان به موجودی شما اضافه شد.")
 
     if not is_member(uid):
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        btn1 = types.InlineKeyboardButton("📢 عضویت در کانال اول", url=f"https://t.me/{CHANNEL_ID.replace('@','')}")
-        btn2 = types.InlineKeyboardButton("📢 عضویت در کانال دوم", url=f"https://t.me/{NEW_CHANNEL_ID.replace('@','')}")
-        btn3 = types.InlineKeyboardButton("👥 عضویت در گروه", url=f"https://t.me/{GROUP_ID.replace('@','')}")
-        btn4 = types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join")
-        kb.add(btn1, btn2, btn3, btn4)
-        bot.send_message(uid, "⚠️ برای استفاده از ربات، باید در هر دو کانال و گروه زیر عضو شوید:", reply_markup=kb)
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
+        kb.add(types.InlineKeyboardButton("👥 عضویت در گروه", url=f"https://t.me/{GROUP_ID.replace('@','')}"))
+        kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join"))
+        bot.send_message(uid, "برای استفاده ابتدا عضو کانال و گروه ما شوید:", reply_markup=kb)
         return
     bot.send_message(uid, "👇 منوی اصلی:", reply_markup=main_menu())
 
@@ -153,9 +144,9 @@ def admin_panel(m):
 def check_join(c):
     if is_member(c.from_user.id):
         bot.edit_message_text("✅ تایید شد", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
-    else: bot.answer_callback_query(c.id, "❌ هنوز عضو همه موارد نشدید!", show_alert=True)
+    else: bot.answer_callback_query(c.id, "هنوز عضو کانال یا گروه نشدی", show_alert=True)
 
-# --------------- ادامه کدها دقیقاً مشابه قبل ---------------
+# --------------- ADMIN SETTINGS (MANAGEMENT) ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_settings")
 def adm_settings(c):
@@ -184,6 +175,8 @@ def toggle_settings(c):
 @bot.callback_query_handler(func=lambda c: c.data == "admin_back")
 def admin_back(c):
     admin_panel(c.message)
+
+# --------------- CHARGE ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "charge")
 def charge(c):
@@ -244,6 +237,7 @@ def ok(c):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("no_"))
 def no(c):
     uid = int(c.data.split("_")[1])
+    # بن خودکار در صورت رسیدن اخطار به ۳
     users_col.update_one({"user_id": uid}, {"$inc": {"warnings": 1}})
     u_data = users_col.find_one({"user_id": uid})
     warns = u_data.get("warnings", 0)
@@ -252,6 +246,8 @@ def no(c):
         bot.send_message(uid, "❌ شما ۳ اخطار دریافت کردید و دسترسی شما به ربات برای همیشه مسدود شد.")
     else:
         bot.send_message(uid, f"❌ رسید شما رد شد و اخطار دریافت کردید. (تعداد اخطار: {warns} از ۳)")
+
+# --------------- PRICE ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "price")
 def price_menu(c):
@@ -285,6 +281,12 @@ def show_vip_prices(c):
     p = get_db_prices("PRICES_VIP")
     txt = f"♾ بدون محدودیت + VIP (تخفیف)\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}\n10گیگ : {format_p(p['10G'])}"
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+
+# --------------- BUY ---------------
+
+# کد های زیر دیگر استفاده نمیشوند و از دیتابیس خوانده میشود (طبق خواسته شما دست نزدم)
+PRICES_MONTH = {"1G":350000,"2G":699000,"3G":999000,"5G":1499000}
+PRICES_VIP = {"1G":599000,"2G":1198000,"3G":1797000,"5G":2899000,"10G":5299000}
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy")
 def buy(c):
@@ -335,8 +337,11 @@ def select_volume(c):
     st = user_states.get(uid, {})
     plan = st.get("plan")
     volume = c.data.split("_")[1]
+    
+    # دریافت قیمت بروز از دیتابیس
     db_p = get_db_prices("PRICES_MONTH" if plan=="MONTH" else "PRICES_VIP")
     price = db_p.get(volume)
+    
     user = users_col.find_one({"user_id": uid})
     balance = user['balance'] if user else 0
     if balance < price:
@@ -361,6 +366,8 @@ def final_buy(c):
     bot.send_message(ADMIN_ID, f"🛒 سفارش جدید\n\n🆔 OrderID: {order_id}\n👤 کاربر: {uid}\n📦 پلن: {data['plan']}\n📊 حجم: {data['volume']}\n💵 مبلغ: {format_p(price)}", reply_markup=kb)
     user_states[uid] = None
 
+# --------------- REFERRAL SYSTEM ---------------
+
 @bot.callback_query_handler(func=lambda c: c.data == "referral")
 def referral_panel(c):
     if not get_setting('ref_status'):
@@ -371,8 +378,16 @@ def referral_panel(c):
     count = user.get("invited_count", 0)
     bot_user = bot.get_me().username
     link = f"https://t.me/{bot_user}?start={uid}"
-    text = f"👥 سیستم زیرمجموعه‌گیری\n\nبا دعوت دوستان خود به ربات، برای هر نفر ۵,۰۰۰ تومان هدیه بگیرید.\n\n✅ تعداد دعوت‌های موفق شما: {count} از ۴\n🔗 لینک دعوت اختصاصی شما:\n`{link}`\n\n⚠️ سقف دعوت برای هر کاربر ۴ نفر می‌باشد."
+    
+    text = f"👥 سیستم زیرمجموعه‌گیری\n\n"
+    text += f"با دعوت دوستان خود به ربات، برای هر نفر ۵,۰۰۰ تومان هدیه بگیرید.\n\n"
+    text += f"✅ تعداد دعوت‌های موفق شما: {count} از ۴\n"
+    text += f"🔗 لینک دعوت اختصاصی شما:\n`{link}`\n\n"
+    text += f"⚠️ سقف دعوت برای هر کاربر ۴ نفر می‌باشد."
+    
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb(), parse_mode="Markdown")
+
+# --------------- ADMIN CONFIG SENDING ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("sendcfg_"))
 def start_send_config(c):
@@ -400,6 +415,8 @@ def send_config_to_user(m):
     bot.send_message(ADMIN_ID, f"✅ کانفیگ برای سفارش {order_id} ارسال شد")
     user_states[ADMIN_ID] = None
 
+# --------------- ACCOUNT ---------------
+
 @bot.callback_query_handler(func=lambda c: c.data == "account")
 def account(c):
     d = users_col.find_one({"user_id": c.from_user.id})
@@ -408,13 +425,19 @@ def account(c):
     text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 وضعیت : {status}\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
+# --------------- SUPPORT ---------------
+
 @bot.callback_query_handler(func=lambda c: c.data == "support")
 def support(c):
     bot.edit_message_text(f"📞 پشتیبانی:\n{SUPPORT_ID}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
+# --------------- BACK ---------------
+
 @bot.callback_query_handler(func=lambda c: c.data == "back")
 def back(c):
     bot.edit_message_text("👇 منوی اصلی:", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
+
+# --------------- ADMIN OTHER FUNCTIONS ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_orders")
 def adm_orders(c):
@@ -437,12 +460,16 @@ def adm_show_user(m):
     uid = int(m.text)
     d = users_col.find_one({"user_id": uid})
     if not d: bot.send_message(ADMIN_ID, "کاربر یافت نشد"); return
+    
+    # بهبود قابلیت آن‌بن: اگر کاربر اخطار هم داشته باشد، با دکمه آن‌بن آزاد شود
     is_banned = d.get("is_banned") or d.get("warnings", 0) >= 3
     ban_txt = "🔓 آن‌بن کردن" if is_banned else "🚫 بن کردن"
+    
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("➕ افزودن موجودی", callback_data=f"adm_add_{uid}"), types.InlineKeyboardButton("➖ کسر موجودی", callback_data=f"adm_sub_{uid}"))
     kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"), types.InlineKeyboardButton(ban_txt, callback_data=f"adm_ban_{uid}"))
-    kb.add(types.InlineKeyboardButton("📩 پیام خصوصی", callback_data=f"adm_pmsg_{uid}"))
+    kb.add(types.InlineKeyboardButton("📩 پیام خصوصی", callback_data=f"adm_pmsg_{uid}")) # اضافه شد
+    
     bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if is_banned else 'آزاد'}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
     user_states[ADMIN_ID] = None
 
@@ -451,6 +478,8 @@ def adm_ban_toggle(c):
     if c.from_user.id != ADMIN_ID: return
     uid = int(c.data.split("_")[2])
     user = users_col.find_one({"user_id": uid})
+    
+    # منطق جدید: اگر بن بود (چه دستی چه با اخطار)، کلاً آزاد شود
     current_ban = user.get("is_banned") or user.get("warnings", 0) >= 3
     if current_ban:
         users_col.update_one({"user_id": uid}, {"$set": {"is_banned": False, "warnings": 0}})
@@ -458,6 +487,7 @@ def adm_ban_toggle(c):
     else:
         users_col.update_one({"user_id": uid}, {"$set": {"is_banned": True}})
         txt = "مسدود شد"
+        
     bot.answer_callback_query(c.id, f"کاربر {txt}")
     bot.send_message(uid, f"⚠️ حساب شما توسط مدیریت {txt} شد.")
 
@@ -483,6 +513,7 @@ def adm_warn(c):
     bot.send_message(uid, "⚠️ از سمت ادمین اخطار دریافت کردید")
     bot.answer_callback_query(c.id, "ثبت شد")
 
+# --- بخش جدید: ارسال پیام خصوصی توسط ادمین ---
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_pmsg_"))
 def adm_pmsg_start(c):
     if c.from_user.id != ADMIN_ID: return
@@ -529,6 +560,8 @@ def do_broadcast(m):
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, f"ارسال شد برای {ok} نفر")
 
+# --------------- بخش جدید: مدیریت قیمت‌ها توسط ادمین ---------------
+
 @bot.callback_query_handler(func=lambda c: c.data == "adm_change_prices")
 def adm_change_prices(c):
     kb = types.InlineKeyboardMarkup()
@@ -559,11 +592,15 @@ def save_new_price(m):
     new_p = int(m.text)
     data = user_states[ADMIN_ID]
     p_key = "PRICES_MONTH" if data['plan'] == "MONTH" else "PRICES_VIP"
+    
     current_prices = get_db_prices(p_key)
     current_prices[data['vol']] = new_p
     settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
+    
     bot.send_message(ADMIN_ID, f"✅ قیمت {data['plan']} {data['vol']} به {format_p(new_p)} تومان تغییر یافت.")
     user_states[ADMIN_ID] = None
+
+# --------------- WEB ---------------
 
 @app.route('/')
 def home(): return "OK - MongoDB Active"
