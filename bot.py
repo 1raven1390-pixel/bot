@@ -9,6 +9,7 @@ from threading import Thread
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8521801987
 CHANNEL_ID = "@rafe_filter_A"
+NEW_CHANNEL_ID = "@lostmooz_" # کانال جدید اضافه شد
 GROUP_ID = "@GP_config_A" # اضافه شد
 SUPPORT_ID = "@Amir_confing_meli"
 
@@ -74,11 +75,16 @@ def back_kb():
 
 def is_member(user_id):
     try:
-        # چک کردن کانال
+        # چک کردن کانال اول
         st_c = bot.get_chat_member(CHANNEL_ID, user_id).status
+        # چک کردن کانال جدید
+        st_c2 = bot.get_chat_member(NEW_CHANNEL_ID, user_id).status
         # چک کردن گروه
         st_g = bot.get_chat_member(GROUP_ID, user_id).status
-        return st_c in ['member', 'creator', 'administrator'] and st_g in ['member', 'creator', 'administrator']
+        
+        return (st_c in ['member', 'creator', 'administrator'] and 
+                st_c2 in ['member', 'creator', 'administrator'] and 
+                st_g in ['member', 'creator', 'administrator'])
     except: return True
 
 # --------------- START & ADMIN COMMAND ---------------
@@ -118,10 +124,11 @@ def start(m):
 
     if not is_member(uid):
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
+        kb.add(types.InlineKeyboardButton("📢 کانال اول", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
+        kb.add(types.InlineKeyboardButton("📢 کانال دوم (جدید)", url=f"https://t.me/{NEW_CHANNEL_ID.replace('@','')}"))
         kb.add(types.InlineKeyboardButton("👥 عضویت در گروه", url=f"https://t.me/{GROUP_ID.replace('@','')}"))
         kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join"))
-        bot.send_message(uid, "برای استفاده ابتدا عضو کانال و گروه ما شوید:", reply_markup=kb)
+        bot.send_message(uid, "برای استفاده ابتدا عضو کانال‌ها و گروه ما شوید:", reply_markup=kb)
         return
     bot.send_message(uid, "👇 منوی اصلی:", reply_markup=main_menu())
 
@@ -144,7 +151,7 @@ def admin_panel(m):
 def check_join(c):
     if is_member(c.from_user.id):
         bot.edit_message_text("✅ تایید شد", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
-    else: bot.answer_callback_query(c.id, "هنوز عضو کانال یا گروه نشدی", show_alert=True)
+    else: bot.answer_callback_query(c.id, "هنوز عضو کانال‌ها یا گروه نشدی", show_alert=True)
 
 # --------------- ADMIN SETTINGS (MANAGEMENT) ---------------
 
