@@ -9,6 +9,7 @@ from threading import Thread
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8521801987
 CHANNEL_ID = "@rafe_filter_A"
+CHANNEL_ID = "@lostmooz"
 GROUP_ID = "@GP_config_A" # اضافه شد
 SUPPORT_ID = "@Amir_confing_meli"
 
