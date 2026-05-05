@@ -25,11 +25,17 @@ db = client['telegram_bot']
 users_col = db['users']
 orders_col = db['orders']
 settings_col = db['settings']
+fjoin_col = db['force_join'] # کالکشن جدید برای عضویت اجباری
 
 # مقداردهی اولیه تنظیمات (اگر وجود نداشته باشند)
 for s in ['sale_month', 'sale_vip', 'charge_status', 'ref_status']: # ref_status اضافه شد
     if not settings_col.find_one({"key": s}):
         settings_col.insert_one({"key": s, "value": 1})
+
+# مقداردهی اولیه کانال و گروه پیشفرض در صورت خالی بودن دیتابیس
+if fjoin_col.count_documents({}) == 0:
+    fjoin_col.insert_one({"type": "channel", "chat_id": CHANNEL_ID})
+    fjoin_col.insert_one({"type": "group", "chat_id": GROUP_ID})
 
 # --- بخش جدید: مقداردهی اولیه قیمت‌ها در دیتابیس (بدون تغییر کدهای قبلی) ---
 default_prices = {
@@ -73,12 +79,15 @@ def back_kb():
     return kb
 
 def is_member(user_id):
+    # چک کردن تمام موارد ثبت شده در دیتابیس عضویت اجباری
+    items = list(fjoin_col.find({}))
+    if not items: return True
     try:
-        # چک کردن کانال
-        st_c = bot.get_chat_member(CHANNEL_ID, user_id).status
-        # چک کردن گروه
-        st_g = bot.get_chat_member(GROUP_ID, user_id).status
-        return st_c in ['member', 'creator', 'administrator'] and st_g in ['member', 'creator', 'administrator']
+        for item in items:
+            st = bot.get_chat_member(item['chat_id'], user_id).status
+            if st not in ['member', 'creator', 'administrator']:
+                return False
+        return True
     except: return True
 
 # --------------- START & ADMIN COMMAND ---------------
@@ -118,10 +127,13 @@ def start(m):
 
     if not is_member(uid):
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_ID.replace('@','')}"))
-        kb.add(types.InlineKeyboardButton("👥 عضویت در گروه", url=f"https://t.me/{GROUP_ID.replace('@','')}"))
+        items = list(fjoin_col.find({}))
+        for item in items:
+            label = "📢 کانال" if item['type'] == "channel" else "👥 گروه"
+            url = f"https://t.me/{item['chat_id'].replace('@','')}"
+            kb.add(types.InlineKeyboardButton(label, url=url))
         kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join"))
-        bot.send_message(uid, "برای استفاده ابتدا عضو کانال و گروه ما شوید:", reply_markup=kb)
+        bot.send_message(uid, "برای استفاده ابتدا عضو موارد زیر شوید:", reply_markup=kb)
         return
     bot.send_message(uid, "👇 منوی اصلی:", reply_markup=main_menu())
 
@@ -137,7 +149,8 @@ def admin_panel(m):
     kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user"))
     kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast"))
     kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings"))
-    kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices")) # دکمه جدید
+    kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices")) 
+    kb.add(types.InlineKeyboardButton("🛡 مدیریت عضویت", callback_data="adm_fjoin_mgr")) # دکمه جدید
     bot.send_message(m.chat.id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users_count}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_join")
@@ -599,6 +612,62 @@ def save_new_price(m):
     
     bot.send_message(ADMIN_ID, f"✅ قیمت {data['plan']} {data['vol']} به {format_p(new_p)} تومان تغییر یافت.")
     user_states[ADMIN_ID] = None
+
+# --------------- بخش جدید: مدیریت عضویت اجباری (درخواستی شما) ---------------
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_fjoin_mgr")
+def adm_fjoin_mgr(c):
+    if c.from_user.id != ADMIN_ID: return
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("📢 مدیریت کانال‌ها", callback_data="fjm_channel"), 
+           types.InlineKeyboardButton("👥 مدیریت گروه‌ها", callback_data="fjm_group"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    bot.edit_message_text("🛡 بخش مدیریت عضویت اجباری:\nیکی از موارد زیر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("fjm_"))
+def fjm_list(c):
+    target_type = c.data.split("_")[1]
+    items = list(fjoin_col.find({"type": target_type}))
+    label = "کانال" if target_type == "channel" else "گروه"
+    
+    txt = f"لیست {label}های ثبت شده:\n\n"
+    kb = types.InlineKeyboardMarkup()
+    
+    if not items:
+        txt += "موردی ثبت نشده است."
+    else:
+        for item in items:
+            txt += f"🔹 {item['chat_id']}\n"
+            kb.add(types.InlineKeyboardButton(f"❌ حذف {item['chat_id']}", callback_data=f"fjdel_{item['_id']}"))
+    
+    kb.add(types.InlineKeyboardButton(f"➕ افزودن {label} جدید", callback_data=f"fjadd_{target_type}"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_fjoin_mgr"))
+    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("fjadd_"))
+def fjadd_start(c):
+    target_type = c.data.split("_")[1]
+    user_states[ADMIN_ID] = {"state": "FJ_WAIT_ID", "type": target_type}
+    bot.send_message(ADMIN_ID, f"لطفاً آیدی {target_type} جدید را با @ ارسال کنید:\nمثال: @my_channel")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "FJ_WAIT_ID")
+def fjadd_save(m):
+    chat_id = m.text.strip()
+    if not chat_id.startswith("@"):
+        bot.send_message(ADMIN_ID, "❌ آیدی باید با @ شروع شود."); return
+    
+    target_type = user_states[ADMIN_ID]["type"]
+    fjoin_col.insert_one({"type": target_type, "chat_id": chat_id})
+    bot.send_message(ADMIN_ID, f"✅ {chat_id} به لیست {target_type}ها اضافه شد.")
+    user_states[ADMIN_ID] = None
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("fjdel_"))
+def fjdel_confirm(c):
+    from bson.objectid import ObjectId
+    item_id = c.data.split("_")[1]
+    fjoin_col.delete_one({"_id": ObjectId(item_id)})
+    bot.answer_callback_query(c.id, "✅ با موفقیت حذف شد", show_alert=True)
+    adm_fjoin_mgr(c)
 
 # --------------- WEB ---------------
 
