@@ -280,7 +280,7 @@ def price_menu(c):
     if get_setting('sale_napsterv_unlim'):
         kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="price_napsterv_unlim"))
     if get_setting('sale_wireguard'):
-        kb.add(types.InlineKeyboardButton("🦏 سرور وایرگارد", callback_data="price_wireguard"))
+        kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="price_wireguard"))
         
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
     bot.edit_message_text("📊 تعرفه خدمات باز:", c.message.chat.id, c.message.message_id, reply_markup=kb)
@@ -295,7 +295,9 @@ def price_month(c):
 @bot.callback_query_handler(func=lambda c: c.data == "show_month_prices")
 def show_month_prices(c):
     p = get_db_prices("PRICES_MONTH")
-    txt = f"📅 ۱ ماهه (تک کاربره)\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}"
+    txt = "📅 ۱ ماهه (تک کاربره)\n\n"
+    for vol, price in p.items():
+        txt += f"{vol} : {format_p(price)}\n"
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_vip")
@@ -308,14 +310,18 @@ def price_vip(c):
 @bot.callback_query_handler(func=lambda c: c.data == "show_vip_prices")
 def show_vip_prices(c):
     p = get_db_prices("PRICES_VIP")
-    txt = f"♾ بدون محدودیت + VIP (تخفیف)\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}\n10گیگ : {format_p(p['10G'])}"
+    txt = "♾ بدون محدودیت + VIP (تخفیف)\n\n"
+    for vol, price in p.items():
+        txt += f"{vol} : {format_p(price)}\n"
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 # هندلرهای جدید بخش قیمت‌ها
 @bot.callback_query_handler(func=lambda c: c.data == "price_napsterv")
 def price_napsterv(c):
     p = get_db_prices("PRICES_NAPSTERV")
-    txt = f"🔮 سرور نپستر\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}"
+    txt = "🔮 سرور نپستر\n\n"
+    for vol, price in p.items():
+        txt += f"{vol} : {format_p(price)}\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
@@ -323,7 +329,9 @@ def price_napsterv(c):
 @bot.callback_query_handler(func=lambda c: c.data == "price_napsterv_unlim")
 def price_napsterv_unlim(c):
     p = get_db_prices("PRICES_NAPSTERV_UNLIM")
-    txt = f"🌀 سرور نامحدود نپستر\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}\n10گیگ : {format_p(p['10G'])}"
+    txt = "🌀 سرور نامحدود نپستر\n\n"
+    for vol, price in p.items():
+        txt += f"{vol} : {format_p(price)}\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
@@ -331,7 +339,9 @@ def price_napsterv_unlim(c):
 @bot.callback_query_handler(func=lambda c: c.data == "price_wireguard")
 def price_wireguard(c):
     p = get_db_prices("PRICES_WIREGUARD")
-    txt = f"🦏 سرور وایرگارد\n\n1گیگ : {format_p(p['1G'])}\n2گیگ : {format_p(p['2G'])}\n3گیگ : {format_p(p['3G'])}\n5گیگ : {format_p(p['5G'])}"
+    txt = "🔴 سرور وایرگارد\n\n"
+    for vol, price in p.items():
+        txt += f"{vol} : {format_p(price)}\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
@@ -354,7 +364,7 @@ def buy(c):
     if get_setting('sale_napsterv_unlim'):
         kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="buy_napsterv_unlim"))
     if get_setting('sale_wireguard'):
-        kb.add(types.InlineKeyboardButton("🦏 سرور وایرگارد", callback_data="buy_wireguard"))
+        kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="buy_wireguard"))
         
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
     bot.edit_message_text("🛒 خرید سرویس:", c.message.chat.id, c.message.message_id, reply_markup=kb)
@@ -372,8 +382,9 @@ def buy_month(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_month_single")
 def buy_month_single(c):
+    p = get_db_prices("PRICES_MONTH")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in ["1G","2G","3G","5G"]: kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_month"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -390,8 +401,9 @@ def buy_vip(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_vip_unlim")
 def buy_vip_unlim(c):
+    p = get_db_prices("PRICES_VIP")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in ["1G","2G","3G","5G","10G"]: kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_vip"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -402,8 +414,9 @@ def buy_napsterv(c):
         bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور نپستر بسته است.", show_alert=True)
         return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"NAPSTERV"}
+    p = get_db_prices("PRICES_NAPSTERV")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in ["1G","2G","3G","5G"]: kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
     bot.edit_message_text("حجم سرور نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -413,8 +426,9 @@ def buy_napsterv_unlim(c):
         bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور نامحدود نپستر بسته است.", show_alert=True)
         return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"NAPSTERV_UNLIM"}
+    p = get_db_prices("PRICES_NAPSTERV_UNLIM")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in ["1G","2G","3G","5G","10G"]: kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
     bot.edit_message_text("حجم سرور نامحدود نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -424,8 +438,9 @@ def buy_wireguard(c):
         bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور وایرگارد بسته است.", show_alert=True)
         return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"WIREGUARD"}
+    p = get_db_prices("PRICES_WIREGUARD")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in ["1G","2G","3G","5G"]: kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
     bot.edit_message_text("حجم سرور وایرگارد را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -655,7 +670,7 @@ def do_broadcast(m):
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, f"ارسال شد برای {ok} نفر")
 
-# --------------- بخش جدید: مدیریت قیمت‌ها توسط ادمین ---------------
+# --------------- بخش جدید: مدیریت قیمت‌ها و حجم‌ها توسط ادمین ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_change_prices")
 def adm_change_prices(c):
@@ -664,19 +679,60 @@ def adm_change_prices(c):
            types.InlineKeyboardButton("♾ قیمت VIP", callback_data="setp_VIP"))
     kb.add(types.InlineKeyboardButton("🔮 قیمت نپستر", callback_data="setp_NAPSTERV"), 
            types.InlineKeyboardButton("🌀 قیمت نپستر نامحدود", callback_data="setp_NAPSTERV_UNLIM"))
-    kb.add(types.InlineKeyboardButton("🦏 قیمت وایرگارد", callback_data="setp_WIREGUARD"))
+    kb.add(types.InlineKeyboardButton("🔴 قیمت وایرگارد", callback_data="setp_WIREGUARD"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text("کدام دسته بندی را تغییر میدهید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("setp_"))
 def adm_setp_plan(c):
     plan = c.data.split("_")[1]
-    kb = types.InlineKeyboardMarkup(row_width=3)
-    vols = ["1G","2G","3G","5G"] if plan in ["MONTH", "NAPSTERV", "WIREGUARD"] else ["1G","2G","3G","5G","10G"]
-    for v in vols:
-        kb.add(types.InlineKeyboardButton(v, callback_data=f"editp_{plan}_{v}"))
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    p = get_db_prices(f"PRICES_{plan}")
+    
+    # نمایش دکمه برای تک تک حجم‌های فعلی جهت ویرایش یا حذف
+    for v in p.keys():
+        kb.add(
+            types.InlineKeyboardButton(f"⚙️ {v} ({format_p(p[v])} ت)", callback_data=f"editp_{plan}_{v}"),
+            types.InlineKeyboardButton(f"❌ حذف {v}", callback_data=f"delp_{plan}_{v}")
+        )
+    
+    kb.add(types.InlineKeyboardButton("➕ افزودن حجم جدید به این سرویس", callback_data=f"addp_{plan}"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_change_prices"))
-    bot.edit_message_text(f"تغییر قیمت کدام حجم از پلن {plan}؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.edit_message_text(f"لیست حجم‌های فعلی پلن {plan}:\nجهت تغییر قیمت یا حذف انتخاب کنید یا حجم جدید بسازید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("addp_"))
+def adm_addp_start(c):
+    plan = c.data.split("_")[1]
+    user_states[ADMIN_ID] = {"state": "ADD_VOLUME_NAME", "plan": plan}
+    bot.send_message(ADMIN_ID, f"نام حجم جدید برای پلن {plan} را وارد کنید (مثلا: 10G یا 50G):")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADD_VOLUME_NAME")
+def adm_addp_save_name(m):
+    vol_name = m.text.strip().upper()
+    plan = user_states[ADMIN_ID]["plan"]
+    user_states[ADMIN_ID] = {"state": "SETTING_PRICE", "plan": plan, "vol": vol_name}
+    bot.send_message(ADMIN_ID, f"حجم {vol_name} ایجاد شد. حالا قیمت آن را به عدد (تومان) وارد کنید:")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("delp_"))
+def adm_delp_val(c):
+    parts = c.data.split("_")
+    if len(parts) == 4:
+        plan = f"{parts[1]}_{parts[2]}"
+        vol = parts[3]
+    else:
+        plan = parts[1]
+        vol = parts[2]
+        
+    p_key = f"PRICES_{plan}"
+    current_prices = get_db_prices(p_key)
+    if vol in current_prices:
+        del current_prices[vol]
+    settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
+    bot.answer_callback_query(c.id, f"حجم {vol} با موفقیت حذف شد", show_alert=True)
+    
+    # بازسازی کلاسیک دکمه برای برگشت به صفحه قبل
+    c.data = f"setp_{plan}"
+    adm_setp_plan(c)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("editp_"))
 def adm_editp_val(c):
@@ -703,7 +759,7 @@ def save_new_price(m):
     current_prices[data['vol']] = new_p
     settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
     
-    bot.send_message(ADMIN_ID, f"✅ قیمت {data['plan']} {data['vol']} به {format_p(new_p)} تومان تغییر یافت.")
+    bot.send_message(ADMIN_ID, f"✅ تنظیمات ذخیره شد. {data['plan']} حجم {data['vol']} به قیمت {format_p(new_p)} تومان تغییر یافت.")
     user_states[ADMIN_ID] = None
 
 # --------------- بخش جدید: مدیریت عضویت اجباری ---------------
