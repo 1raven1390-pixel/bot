@@ -681,7 +681,7 @@ def adm_change_prices(c):
            types.InlineKeyboardButton("🌀 قیمت نپستر نامحدود", callback_data="setp_NAPSTERV_UNLIM"))
     kb.add(types.InlineKeyboardButton("🔴 قیمت وایرگارد", callback_data="setp_WIREGUARD"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌ب بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("setp_"))
 def adm_setp_plan(c):
@@ -817,6 +817,76 @@ def fjdel_confirm(c):
     fjoin_col.delete_one({"_id": ObjectId(item_id)})
     bot.answer_callback_query(c.id, "✅ با موفقیت حذف شد", show_alert=True)
     adm_fjoin_mgr(c)
+
+# ---------------------------------------------------------------------
+# >>> کدهای اصلاحی جدید (بدون دست زدن به خطوط قبلی، در انتها اضافه شدند) <<<
+# ---------------------------------------------------------------------
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("setp_"), order=1)
+def FIXED_adm_setp_plan(c):
+    # دریافت نام دقیق پلن حتی اگر دارای کاراکتر آندرلاین باشد (مثل NAPSTERV_UNLIM)
+    plan = c.data.replace("setp_", "")
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    p = get_db_prices(f"PRICES_{plan}")
+    
+    for v in list(p.keys()):
+        kb.add(
+            types.InlineKeyboardButton(f"⚙️ {v} ({format_p(p[v])} ت)", callback_data=f"FIXEDedit_{plan}:::{v}"),
+            types.InlineKeyboardButton(f"❌ حذف حجم {v}", callback_data=f"FIXEDdel_{plan}:::{v}")
+        )
+    
+    kb.add(types.InlineKeyboardButton("➕ افزودن حجم جدید به این سرویس", callback_data=f"FIXEDadd_{plan}"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_change_prices"))
+    bot.edit_message_text(f"لیست حجم‌های فعلی پلن {plan}:\nجهت تغییر قیمت یا حذف انتخاب کنید یا حجم جدید بسازید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("FIXEDadd_"))
+def FIXED_adm_addp_start(c):
+    plan = c.data.replace("FIXEDadd_", "")
+    user_states[ADMIN_ID] = {"state": "FIXED_ADD_VOLUME_NAME", "plan": plan}
+    bot.send_message(ADMIN_ID, f"نام حجم جدید برای پلن {plan} را وارد کنید (مثلا: 10G یا 50G):")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "FIXED_ADD_VOLUME_NAME", content_types=['text'])
+def FIXED_adm_addp_save_name(m):
+    vol_name = m.text.strip().upper()
+    plan = user_states[ADMIN_ID]["plan"]
+    user_states[ADMIN_ID] = {"state": "FIXED_SETTING_PRICE", "plan": plan, "vol": vol_name}
+    bot.send_message(ADMIN_ID, f"حجم {vol_name} ایجاد شد. حالا قیمت آن را به عدد (تومان) وارد کنید:")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("FIXEDdel_"))
+def FIXED_adm_delp_val(c):
+    data_str = c.data.replace("FIXEDdel_", "")
+    plan, vol = data_str.split(":::")
+    p_key = f"PRICES_{plan}"
+    current_prices = get_db_prices(p_key)
+    if vol in current_prices:
+        del current_prices[vol]
+    settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
+    bot.answer_callback_query(c.id, f"حجم {vol} با موفقیت حذف شد", show_alert=True)
+    c.data = f"setp_{plan}"
+    FIXED_adm_setp_plan(c)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("FIXEDedit_"))
+def FIXED_adm_editp_val(c):
+    data_str = c.data.replace("FIXEDedit_", "")
+    plan, vol = data_str.split(":::")
+    user_states[ADMIN_ID] = {"state": "FIXED_SETTING_PRICE", "plan": plan, "vol": vol}
+    bot.send_message(ADMIN_ID, f"قیمت جدید برای {plan} {vol} را به عدد (تومان) وارد کنید:")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "FIXED_SETTING_PRICE", content_types=['text'])
+def FIXED_save_new_price(m):
+    if not m.text.isdigit(): 
+        bot.send_message(ADMIN_ID, "❌ فقط عدد انگلیسی بدون فاصله یا کاما بفرستید:")
+        return
+    new_p = int(m.text)
+    data = user_states[ADMIN_ID]
+    p_key = f"PRICES_{data['plan']}"
+    
+    current_prices = get_db_prices(p_key)
+    current_prices[data['vol']] = new_p
+    settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
+    
+    bot.send_message(ADMIN_ID, f"✅ تنظیمات در دیتابیس ذخیره شد.\n{data['plan']} حجم {data['vol']} به قیمت {format_p(new_p)} تومان تغییر یافت.")
+    user_states[ADMIN_ID] = None
 
 # --------------- WEB ---------------
 
