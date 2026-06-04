@@ -458,7 +458,7 @@ def select_volume(c):
     user = users_col.find_one({"user_id": uid})
     balance = user['balance'] if user else 0
     if balance < price:
-        bot.answer_callback_query(c.id, "❌ موجودی کافی نمی‌باشد", show_alert=True); return
+        bot.answer_callback_query(c.id, "❌ابتدا حساب خود را شارژ کنید", show_alert=True); return
     user_states[uid] = {"state":"CONFIRM_BUY","plan":plan,"volume":volume,"price":price}
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ تایید", callback_data="final_buy"), types.InlineKeyboardButton("❌ لغو", callback_data="back"))
