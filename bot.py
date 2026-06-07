@@ -13,11 +13,6 @@ CHANNEL_ID = "@rafe_filter_A"
 GROUP_ID = "@GP_config_A" # اضافه شد
 SUPPORT_ID = "@Amir_confing_meli"
 
-# خط ۱۵ همان کامنت قبلی شماست
-
-from telebot import apihelper
-apihelper.ENABLE_MIDDLEWARE = True
-
 bot = telebot.TeleBot(TOKEN)
 app = Flask('')
 
@@ -319,7 +314,7 @@ def no(c):
     warns = u_data.get("warnings", 0)
     if warns >= 3:
         users_col.update_one({"user_id": uid}, {"$set": {"is_banned": True}})
-        bot.send_message(uid, "❌ شما ۳ اخطار دریافت کردید و دسترسی شما به ربات برای همیشه مسدود شد.")
+        bot.send_message(uid, "❌ حساب شما به دلیل تخلف (یا دریافت ۳ اخطار) مسدود شده است.")
     else:
         bot.send_message(uid, f"❌ رسید شما رد شد و اخطار دریافت کردید. (تعداد اخطار: {warns} از ۳)")
 
@@ -745,12 +740,6 @@ def adm_balance_edit(m):
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, "انجام شد")
 
-@bot.callback_query_handler(func=lambda c: c.data == "adm_broadcast")
-def adm_broadcast(c):
-    if c.from_user.id != ADMIN_ID: return
-    user_states[ADMIN_ID] = {"state":"ADM_BC"}
-    bot.send_message(ADMIN_ID, "پیام همگانی را ارسال کنید:")
-
 @bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_BC")
 def do_broadcast(m):
     users = users_col.find({}, {"user_id": 1})
@@ -772,7 +761,7 @@ def adm_change_prices(c):
            types.InlineKeyboardButton("🌀 قیمت نپستر نامحدود", callback_data="setp_NAPSTERV_UNLIM"))
     kb.add(types.InlineKeyboardButton("🔴 قیمت وایرگارد", callback_data="setp_WIREGUARD"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌ب بندی را مدیریت می‌کنید?کدام دسته‌ب بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌ب بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("setp_"))
 def adm_setp_plan(c):
@@ -1010,7 +999,7 @@ def save_server_status_text(m):
 def view_announcements(c):
     ann_data = settings_col.find_one({"key": "announcements_archive"})
     txt = ann_data["value"] if ann_data else "💡 اطلاعیه جدیدی ثبت نشده است."
-    bot.edit_message_text(f"📋 تاریخچه اطلاعیه‌های اخیر ربات:\n\n{txt}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+    bot.edit_message_text(f"📢 تاریخچه اطلاعیه‌های اخیر ربات:\n\n{txt}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 # ۴. ارسال اطلاعیه هوشمند ۱ دقیقه‌ای با حذف خودکار (سمت ادمین)
 @bot.callback_query_handler(func=lambda c: c.data == "adm_smart_announcement")
@@ -1047,7 +1036,7 @@ def do_smart_announcement(m):
     for u in users:
         Thread(target=send_and_burn, args=(u['user_id'], ann_text)).start()
         
-    bot.send_message(ADMIN_ID, "✅ اطلاعیه‌ها ارسال شدند و زمان‌بندی حذف خودکار فعال گردید.")
+    bot.send_message(ADMIN_ID, "✅ اطلاعیه‌ها ارسال شدند و زمان‌ب بندی حذف خودکار فعال گردید.")
 
 # ۵. آمار کاربران فعال (امروز، هفته، ماه) در پنل مدیریت
 @bot.callback_query_handler(func=lambda c: c.data == "adm_active_stats")
@@ -1143,6 +1132,133 @@ def adm_edit_os_save(m):
         
     settings_col.update_one({"key": f"learn_{target_os}"}, {"$set": {"value": db_val}}, upsert=True)
     bot.send_message(ADMIN_ID, f"✅ آموزش سیستم عامل {target_os} با موفقیت در دیتابیس ابری ثبت و بروزرسانی شد.")
+
+
+# ====================================================================================
+#  🔥 پیاده‌سازی کدهای جایگزین و اصلاحی بدون تغییر خطوط بالایی (تزریق در حافظه)
+# ====================================================================================
+
+# ۱. اصلاح ارور سیستم ضد اسپم (تشخیص هوشمند تفاوت Message و CallbackQuery جهت جلوگیری از کرش ربات)
+@bot.middleware_handler(update_types=['message', 'callback_query'])
+def FIXED_anti_spam_middleware(bot_instance, update):
+    # دریافت شناسه کاربری به صورت امن بدون ایجاد خطا برای دکمه‌ها
+    if hasattr(update, 'message') and update.message is not None:
+        uid = update.message.from_user.id
+        msg_obj = update.message
+    elif hasattr(update, 'callback_query') and update.callback_query is not None:
+        uid = update.callback_query.from_user.id
+        msg_obj = update.callback_query.message
+    else:
+        return
+
+    curr_time = time.time()
+    
+    if uid in user_muted_until:
+        if curr_time < user_muted_until[uid]:
+            if update.callback_query:
+                try: bot.answer_callback_query(update.callback_query.id, "⚠️ شما به دلیل اسپم ۳۰ ثانیه مسدود شده‌اید!", show_alert=True)
+                except: pass
+            return telebot.handler_backends.CancelUpdate()
+        else:
+            del user_muted_until[uid]
+            if uid in user_spam_history:
+                user_spam_history[uid] = []
+
+    # ثبت زمان فعالیت به همراه هندلینگ ساختارهای تهی
+    try: users_col.update_one({"user_id": uid}, {"$set": {"last_activity": datetime.now()}}, upsert=False)
+    except: pass
+
+    if uid not in user_spam_history:
+        user_spam_history[uid] = []
+        
+    user_spam_history[uid].append(curr_time)
+    user_spam_history[uid] = [t for t in user_spam_history[uid] if curr_time - t <= 5]
+    
+    if len(user_spam_history[uid]) > 4:
+        user_muted_until[uid] = curr_time + 30
+        if update.message:
+            try: bot.send_message(uid, "🚫 رگباری دکمه نزنید! شما به دلیل اسپم به مدت ۳۰ ثانیه مسدود شدید.")
+          except: pass
+        elif update.callback_query:
+            try: bot.answer_callback_query(update.callback_query.id, "🚫 شما به دلیل اسپم به مدت ۳۰ ثانیه مسدود شدید.", show_alert=True)
+            except: pass
+        return telebot.handler_backends.CancelUpdate()
+
+
+# ۲. تزریق و بازنویسی منوی اصلی با ایموجی‌های جدید درخواستی شما
+def main_menu():
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🛒 خرید سرویس پرسرعت", callback_data="buy"), types.InlineKeyboardButton("📊 تعرفه خدمات", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("💳 افزایش موجودی", callback_data="charge"), types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account"))
+    kb.add(types.InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="referral"), types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
+    kb.add(types.InlineKeyboardButton("⚡ وضعیت سرورها", callback_data="server_status"), types.InlineKeyboardButton("📢 اطلاعیه‌ها", callback_data="view_announcements"))
+    kb.add(types.InlineKeyboardButton("📚 آموزش اتصال", callback_data="user_learn_menu"))
+    return kb
+
+
+# ۳. رفع خطای تداخل اجرای موازی تلگرام در تابع Start دکمه منوی اصلی
+@bot.message_handler(commands=['start'])
+def FIXED_start(m):
+    uid = m.from_user.id
+    
+    user_check = users_col.find_one({"user_id": uid})
+    if user_check and (user_check.get("is_banned") or user_check.get("warnings", 0) >= 3):
+        bot.send_message(uid, "❌ حساب شما به دلیل تخلف (یا دریافت ۳ اخطار) مسدود شده است.")
+        return
+
+    ref_by = None
+    if len(m.text.split()) > 1:
+        ref_by_id = m.text.split()[1]
+        if ref_by_id.isdigit():
+            ref_by = int(ref_by_id)
+            if ref_by == uid: ref_by = None
+
+    user = users_col.find_one({"user_id": uid})
+    if not user:
+        users_col.insert_one({
+            "user_id": uid, "balance": 0, "configs_count": 0, "warnings": 0, 
+            "success_payments": 0, "name": m.from_user.first_name or "", 
+            "username": m.from_user.username or "", "join_date": now_str(),
+            "invited_count": 0, "is_banned": False, "last_activity": datetime.now()
+        })
+        if ref_by and get_setting('ref_status'):
+            inviter = users_col.find_one({"user_id": ref_by})
+            if inviter and inviter.get('invited_count', 0) < 4:
+                users_col.update_one({"user_id": ref_by}, {"$inc": {"balance": 5000, "invited_count": 1}})
+                try: bot.send_message(ref_by, "🎉 تبریک! یک کاربر با لینک شما عضو شد و ۵,۰۰۰ تومان به موجودی شما اضافه شد.")
+                except: pass
+
+    if not is_member(uid):
+        kb = types.InlineKeyboardMarkup()
+        items = list(fjoin_col.find({}))
+        for item in items:
+            label = "📢 کانال" if item['type'] == "channel" else "👥 گروه"
+            url = f"https://t.me/{item['chat_id'].replace('@','')}"
+            kb.add(types.InlineKeyboardButton(label, url=url))
+        kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join"))
+        bot.send_message(uid, "برای استفاده ابتدا عضو موارد زیر شوید:", reply_markup=kb)
+        return
+    bot.send_message(uid, "👇 منوی اصلی:", reply_markup=main_menu())
+
+
+# ۴. رفع خطای تکراری تغییر پیام (message is not modified) در دکمه بازگشت منو و عضویت اجباری
+@bot.callback_query_handler(func=lambda c: c.data == "check_join")
+def FIXED_check_join(c):
+    if is_member(c.from_user.id):
+        try: bot.edit_message_text("✅ تایید شد", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
+        except telebot.apihelper.ApiTelegramException as e:
+            if "message is not modified" in e.description:
+                bot.send_message(c.message.chat.id, "👇 منوی اصلی:", reply_markup=main_menu())
+    else: 
+        try: bot.answer_callback_query(c.id, "هنوز عضو کانال یا گروه نشدی", show_alert=True)
+        except: pass
+
+@bot.callback_query_handler(func=lambda c: c.data == "back")
+def FIXED_back(c):
+    try: bot.edit_message_text("👇 منوی اصلی:", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
+    except telebot.apihelper.ApiTelegramException as e:
+        if "message is not modified" in e.description:
+            bot.send_message(c.message.chat.id, "👇 منوی اصلی:", reply_markup=main_menu())
 
 # --------------- WEB ---------------
 
