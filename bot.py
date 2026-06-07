@@ -13,6 +13,11 @@ CHANNEL_ID = "@rafe_filter_A"
 GROUP_ID = "@GP_config_A" # اضافه شد
 SUPPORT_ID = "@Amir_confing_meli"
 
+# خط ۱۵ همان کامنت قبلی شماست
+
+from telebot import apihelper
+apihelper.ENABLE_MIDDLEWARE = True
+
 bot = telebot.TeleBot(TOKEN)
 app = Flask('')
 
