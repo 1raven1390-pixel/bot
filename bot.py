@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 from flask import Flask
 from threading import Thread
+import time # اضافه شد برای سیستم ضد اسپم و محاسبات زمان
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8521801987
@@ -29,7 +30,7 @@ fjoin_col = db['force_join'] # کالکشن جدید برای عضویت اجب�
 
 # مقداردهی اولیه تنظیمات (اگر وجود نداشته باشند)
 # کلیدهای جدید سرورها اضافه شدند
-for s in ['sale_month', 'sale_vip', 'sale_napsterv', 'sale_napsterv_unlim', 'sale_wireguard', 'charge_status', 'ref_status']: 
+for s in ['sale_month', 'sale_vip', 'sale_napsterv', 'sale_napsterv_unlim', 'sale_wireguard', 'charge_status', 'ref_status', 'learn_status']: 
     if not settings_col.find_one({"key": s}):
         settings_col.insert_one({"key": s, "value": 1})
 
@@ -57,6 +58,10 @@ def get_db_prices(p_type):
 # --------------- STATE ---------------
 user_states = {}
 
+# حافظه موقت برای ذخیره تاریخچه درخواست‌ها جهت ساخت ضد اسپم هوشمند بدون دیتابیس
+user_spam_history = {}
+user_muted_until = {}
+
 # --------------- UTILS ---------------
 
 def get_setting(key):
@@ -72,18 +77,17 @@ def now_str():
 
 def main_menu():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🛒 خرید سرور", callback_data="buy"), types.InlineKeyboardButton("📊 تعرفه", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("🛒 خرید سرویس پرسرعت", callback_data="buy"), types.InlineKeyboardButton("📊 تعرفه خدمات", callback_data="price"))
     kb.add(types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge"), types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account"))
     kb.add(types.InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="referral"), types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
-    # ==================== دکمه‌های جدید ویژگی‌های اضافه‌شده ====================
-    kb.add(types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="server_status"), types.InlineKeyboardButton("📢 اطلاعیه‌ها", callback_data="announcements"))
-    kb.add(types.InlineKeyboardButton("📚 آموزش اتصال", callback_data="tutorial"))
-    # ==========================================================================
+    # دکمه‌های جدید منوی اصلی با ایموجی‌های جذاب
+    kb.add(types.InlineKeyboardButton("⚡ وضعیت سرورها", callback_data="server_status"), types.InlineKeyboardButton("📋 اطلاعیه‌ها", callback_data="view_announcements"))
+    kb.add(types.InlineKeyboardButton("📱 آموزش اتصال", callback_data="user_learn_menu"))
     return kb
 
 def back_kb():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back"))
     return kb
 
 def is_member(user_id):
@@ -96,6 +100,48 @@ def is_member(user_id):
                 return False
         return True
     except: return True
+
+# ----------------- ANTI SPAM MIDDLEWARE -----------------
+@bot.middleware_handler(update_types=['message', 'callback_query'])
+def anti_spam_middleware(bot_instance, update):
+    if update.message:
+        uid = update.message.from_user.id
+    elif update.callback_query:
+        uid = update.callback_query.from_user.id
+    else:
+        return
+
+    curr_time = time.time()
+    
+    # بررسی اینکه کاربر در حال حاضر سایلنت است یا خیر
+    if uid in user_muted_until:
+        if curr_time < user_muted_until[uid]:
+            if update.callback_query:
+                bot.answer_callback_query(update.callback_query.id, "⚠️ شما به دلیل اسپم ۳۰ ثانیه مسدود شده‌اید!", show_alert=True)
+            return telebot.handler_backends.CancelUpdate()
+        else:
+            del user_muted_until[uid]
+            if uid in user_spam_history:
+                user_spam_history[uid] = []
+
+    # ثبت زمان فعالیت برای آمار ادمین
+    users_col.update_one({"user_id": uid}, {"$set": {"last_activity": datetime.now()}}, upsert=False)
+
+    if uid not in user_spam_history:
+        user_spam_history[uid] = []
+        
+    user_spam_history[uid].append(curr_time)
+    
+    # فیلتر کردن درخواست‌های قدیمی‌تر از ۵ ثانیه
+    user_spam_history[uid] = [t for t in user_spam_history[uid] if curr_time - t <= 5]
+    
+    if len(user_spam_history[uid]) > 4:
+        user_muted_until[uid] = curr_time + 30
+        if update.message:
+            bot.send_message(uid, "🚫 رگباری دکمه نزنید! شما به دلیل اسپم به مدت ۳۰ ثانیه مسدود شدید.")
+        elif update.callback_query:
+            bot.answer_callback_query(update.callback_query.id, "🚫 شما به دلیل اسپم به مدت ۳۰ ثانیه مسدود شدید.", show_alert=True)
+        return telebot.handler_backends.CancelUpdate()
 
 # --------------- START & ADMIN COMMAND ---------------
 
@@ -121,17 +167,13 @@ def start(m):
             "user_id": uid, "balance": 0, "configs_count": 0, "warnings": 0, 
             "success_payments": 0, "name": m.from_user.first_name or "", 
             "username": m.from_user.username or "", "join_date": now_str(),
-            "invited_count": 0, "is_banned": False,
-            "last_activity": datetime.now()  # ← فیلد جدید برای آمار فعالیت
+            "invited_count": 0, "is_banned": False, "last_activity": datetime.now()
         })
         if ref_by and get_setting('ref_status'):
             inviter = users_col.find_one({"user_id": ref_by})
             if inviter and inviter.get('invited_count', 0) < 4:
                 users_col.update_one({"user_id": ref_by}, {"$inc": {"balance": 5000, "invited_count": 1}})
                 bot.send_message(ref_by, "🎉 تبریک! یک کاربر با لینک شما عضو شد و ۵,۰۰۰ تومان به موجودی شما اضافه شد.")
-    else:
-        # به‌روزرسانی زمان آخرین فعالیت برای کاربران موجود
-        users_col.update_one({"user_id": uid}, {"$set": {"last_activity": datetime.now()}})
 
     if not is_member(uid):
         kb = types.InlineKeyboardMarkup()
@@ -159,12 +201,9 @@ def admin_panel(m):
     kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings"))
     kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices")) 
     kb.add(types.InlineKeyboardButton("🛡 مدیریت عضویت", callback_data="adm_fjoin_mgr"))
-    # ==================== دکمه‌های جدید پنل ادمین ====================
-    kb.add(types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="adm_server_status"))
-    kb.add(types.InlineKeyboardButton("📢 اطلاعیه هوشمند", callback_data="adm_smart_announce"))
-    kb.add(types.InlineKeyboardButton("📊 آمار کاربران فعال", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton("📚 مدیریت آموزش اتصال", callback_data="adm_tutorial_mgr"))
-    # =================================================================
+    # دکمه‌های مدیریت پیشرفته جدید در پنل مدیریت
+    kb.add(types.InlineKeyboardButton("📢 ارسال اطلاعیه ۱ دقیقه‌ای", callback_data="adm_smart_announcement"), types.InlineKeyboardButton("⚡ بروزرسانی وضعیت سرور", callback_data="adm_update_servers"))
+    kb.add(types.InlineKeyboardButton("📊 آمار کاربران فعال", callback_data="adm_active_stats"), types.InlineKeyboardButton("📱 مدیریت آموزش اتصال", callback_data="adm_manage_learn"))
     bot.send_message(m.chat.id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users_count}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_join")
@@ -283,26 +322,24 @@ def no(c):
 
 @bot.callback_query_handler(func=lambda c: c.data == "price")
 def price_menu(c):
-    uid = c.from_user.id
     kb = types.InlineKeyboardMarkup()
     # شرط عدم نمایش دکمه‌ها در صورت خاموش بودن خدمات
     if get_setting('sale_month'):
         kb.add(types.InlineKeyboardButton("📅 ۱ ماهه", callback_data="price_month"))
-    if get_setting('sale_vip'):
-        kb.add(types.InlineKeyboardButton("♾ بدون محدودیت زمانی + ساب + VIP", callback_data="price_vip"))
+    
+    # کنترل باز شدن بخش VIP به سطح کاربر در تعرفه
+    u_data = users_col.find_one({"user_id": c.from_user.id})
+    success_buys = u_data.get("success_payments", 0) if u_data else 0
+    if get_setting('sale_vip') and success_buys >= 15:
+        kb.add(types.InlineKeyboardButton("💎 سرور VIP", callback_data="price_vip"))
+        
     if get_setting('sale_napsterv'):
         kb.add(types.InlineKeyboardButton("🔮 سرور نپستر", callback_data="price_napsterv"))
     if get_setting('sale_napsterv_unlim'):
         kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="price_napsterv_unlim"))
     if get_setting('sale_wireguard'):
         kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="price_wireguard"))
-    # ==================== ویژگی ۴: نمایش سرور VIP برای کاربران سطح VIP ====================
-    user = users_col.find_one({"user_id": uid})
-    if user:
-        level = get_user_level(user.get("success_payments", 0))
-        if level == "💎 VIP":
-            kb.add(types.InlineKeyboardButton("💎 سرور اختصاصی VIP", callback_data="price_vip_exclusive"))
-    # =======================================================================================
+        
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
     bot.edit_message_text("📊 تعرفه خدمات باز:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -378,8 +415,13 @@ def buy(c):
     # عدم نمایش دکمه‌ها در صورت بسته بودن فروش هر سرور
     if get_setting('sale_month'):
         kb.add(types.InlineKeyboardButton("📅 ۱ ماهه", callback_data="buy_month"))
-    if get_setting('sale_vip'):
-        kb.add(types.InlineKeyboardButton("♾ بدون محدودیت + VIP", callback_data="buy_vip"))
+        
+    # قفل هوشمند دکمه خرید سرور VIP بر اساس تعداد خریدهای موفق کاربر
+    u_data = users_col.find_one({"user_id": c.from_user.id})
+    success_buys = u_data.get("success_payments", 0) if u_data else 0
+    if get_setting('sale_vip') and success_buys >= 15:
+        kb.add(types.InlineKeyboardButton("💎 سرور VIP", callback_data="buy_vip"))
+        
     if get_setting('sale_napsterv'):
         kb.add(types.InlineKeyboardButton("🔮 سرور نپستر", callback_data="buy_napsterv"))
     if get_setting('sale_napsterv_unlim'):
@@ -534,26 +576,10 @@ def start_send_config(c):
     if order['status'] != "pending":
         bot.answer_callback_query(c.id, "این سفارش قبلا انجام شده", show_alert=True); return
     user_states[ADMIN_ID] = {"state": "SEND_CONFIG", "order_id": order_id_str, "user_id": order['user_id']}
-    # ==================== ویژگی ۷: اطلاع‌رسانی پشتیبانی از فایل ====================
-    bot.send_message(ADMIN_ID, "📤 کانفیگ رو ارسال کن:\n(می‌توانید متن، فایل .conf یا هر نوع فایلی ارسال کنید)")
-    # ================================================================================
+    bot.send_message(ADMIN_ID, "📤 کانفیگ رو ارسال کن (میتونی متن بفرستی یا فایل وایرگارد آپلود کنی):")
 
-# ==================== ویژگی ۷: هندلر ارسال فایل کانفیگ ====================
-@bot.message_handler(content_types=['document'], func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "SEND_CONFIG")
-def send_config_file_to_user(m):
-    from bson.objectid import ObjectId
-    data = user_states.get(ADMIN_ID)
-    if not data: return
-    order_id = data["order_id"]
-    user_id = data["user_id"]
-    caption = m.caption or "✅ فایل کانفیگ شما آماده است"
-    bot.send_document(user_id, m.document.file_id, caption=f"✅ کانفیگ سفارش شما:\n\n{caption}")
-    orders_col.update_one({"_id": ObjectId(order_id)}, {"$set": {"status": "done"}})
-    bot.send_message(ADMIN_ID, f"✅ فایل کانفیگ برای سفارش {order_id} ارسال شد")
-    user_states[ADMIN_ID] = None
-# ===========================================================================
-
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "SEND_CONFIG")
+# هندلر ارتقا یافته تحویل سفارش برای پشتیبانی کامل از فایل و مدیا
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "SEND_CONFIG", content_types=['text', 'document', 'photo', 'video', 'audio'])
 def send_config_to_user(m):
     from bson.objectid import ObjectId
     if m.text == "/admin":
@@ -561,9 +587,19 @@ def send_config_to_user(m):
         admin_panel(m); return
     data = user_states.get(ADMIN_ID)
     order_id = data["order_id"]; user_id = data["user_id"]
-    bot.send_message(user_id, f"✅ کانفیگ شما:\n\n{m.text}")
+    
+    # ارسال هوشمند بر اساس نوع رسانه فرستاده شده توسط ادمین
+    if m.content_type == 'text':
+        bot.send_message(user_id, f"✅ کانفیگ شما:\n\n{m.text}")
+    elif m.content_type == 'document':
+        bot.send_document(user_id, m.document.file_id, caption="✅ فایل کانفیگ اختصاصی شما (وایرگارد)")
+    elif m.content_type == 'photo':
+        bot.send_photo(user_id, m.photo[-1].file_id, caption=m.caption or "✅ بارکد / تصویر سرویس شما")
+    elif m.content_type == 'video':
+        bot.send_video(user_id, m.video.file_id, caption=m.caption or "✅ فایل سفارش شما")
+        
     orders_col.update_one({"_id": ObjectId(order_id)}, {"$set": {"status": "done"}})
-    bot.send_message(ADMIN_ID, f"✅ کانفیگ برای سفارش {order_id} ارسال شد")
+    bot.send_message(ADMIN_ID, f"✅ سفارش {order_id} با موفقیت در قالب رسانه مربوطه به خریدار تحویل داده شد.")
     user_states[ADMIN_ID] = None
 
 # --------------- ACCOUNT ---------------
@@ -573,10 +609,19 @@ def account(c):
     d = users_col.find_one({"user_id": c.from_user.id})
     username = f"@{c.from_user.username}" if c.from_user.username else "❌ ندارد"
     status = "🚫 مسدود" if d.get("is_banned") or d.get("warnings", 0) >= 3 else "✅ فعال"
-    # ==================== ویژگی ۴: نمایش سطح کاربر در پروفایل ====================
-    level = get_user_level(d.get("success_payments", 0))
-    text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 وضعیت : {status}\n🏅 سطح کاربری : {level}\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
-    # ==============================================================================
+    
+    # محاسبه هوشمند سطح کاربری کاربر
+    success_buys = d.get("success_payments", 0)
+    if success_buys <= 3:
+        level = "برنزی 🥉"
+    elif 4 <= success_buys <= 6:
+        level = "نقره‌ای 🥈"
+    elif 7 <= success_buys <= 14:
+        level = "طلایی 🥇"
+    else:
+        level = "VIP 💎 (دسترسی کامل به سرورهای کلیدی)"
+        
+    text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n👑 سطح حساب: {level}\n🔆 یوزرنیم : {username}\n📱 وضعیت : {status}\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
 # --------------- SUPPORT ---------------
@@ -722,7 +767,7 @@ def adm_change_prices(c):
            types.InlineKeyboardButton("🌀 قیمت نپستر نامحدود", callback_data="setp_NAPSTERV_UNLIM"))
     kb.add(types.InlineKeyboardButton("🔴 قیمت وایرگارد", callback_data="setp_WIREGUARD"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌ب بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌ب بندی را مدیریت می‌کنید?کدام دسته‌ب بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("setp_"))
 def adm_setp_plan(c):
@@ -930,412 +975,169 @@ def FIXED_save_new_price(m):
     user_states[ADMIN_ID] = None
 
 
-# =====================================================================
-# >>>>>>>>>> ویژگی‌های جدید اضافه‌شده — بدون دست زدن به کدهای بالا <<<<<<<<<<
-# =====================================================================
+# ====================================================================================
+#  🔴 پیاده‌سازی ۱۰۰٪ اختصاصی قابلیت‌های درخواستی جدید در فاز نهایی (تزریق بدون تداخل)
+# ====================================================================================
 
-# کالکشن‌های جدید برای ویژگی‌های جدید
-announcements_col = db['announcements']
-tutorial_col = db['tutorials']
-
-# مقداردهی اولیه تنظیمات جدید
-for s_new in ['tutorial_status']:
-    if not settings_col.find_one({"key": s_new}):
-        settings_col.insert_one({"key": s_new, "value": 1})
-
-# مقداردهی اولیه وضعیت سرور در دیتابیس
-if not settings_col.find_one({"key": "server_status_text"}):
-    settings_col.insert_one({"key": "server_status_text", "value": "🟢 همه سرورها آنلاین هستند."})
-
-# مقداردهی اولیه آموزش‌های پیش‌فرض
-default_tutorials = [
-    {"os": "android", "label": "📱 اندروید", "content": "آموزش اتصال اندروید:\n\nاپلیکیشن V2rayNG را نصب کنید و فایل کانفیگ را import کنید.", "type": "text"},
-    {"os": "ios", "label": "🍎 iOS (آیفون)", "content": "آموزش اتصال iOS:\n\nاپلیکیشن Streisand را نصب کنید و فایل کانفیگ را وارد کنید.", "type": "text"},
-    {"os": "windows", "label": "💻 ویندوز", "content": "آموزش اتصال ویندوز:\n\nنرم‌افزار Nekoray را دانلود و نصب کنید.", "type": "text"},
-    {"os": "mac", "label": "🖥 مک", "content": "آموزش اتصال مک:\n\nاپلیکیشن FoXray را از Mac App Store نصب کنید.", "type": "text"},
-]
-for tut in default_tutorials:
-    if not tutorial_col.find_one({"os": tut["os"]}):
-        tutorial_col.insert_one(tut)
-
-# ==================== ویژگی ۱: سیستم ضد اسپم ====================
-import time
-spam_tracker = {}  # {user_id: [timestamps]}
-spam_muted = {}    # {user_id: mute_until_timestamp}
-
-def check_spam(uid):
-    """بررسی اسپم: True یعنی کاربر اسپم کرده و باید بلاک شود"""
-    now_ts = time.time()
-    # بررسی آیا کاربر در حال حاضر در مکث است
-    if uid in spam_muted:
-        if now_ts < spam_muted[uid]:
-            return True  # هنوز در مکث است
-        else:
-            del spam_muted[uid]  # مکث تمام شد
-            spam_tracker[uid] = []
-    
-    # ثبت کلیک جدید
-    if uid not in spam_tracker:
-        spam_tracker[uid] = []
-    
-    # فقط کلیک‌های ۵ ثانیه اخیر را نگه دار
-    spam_tracker[uid] = [t for t in spam_tracker[uid] if now_ts - t < 5]
-    spam_tracker[uid].append(now_ts)
-    
-    # اگر بیش از ۴ کلیک در ۵ ثانیه بود → مکث ۳۰ ثانیه
-    if len(spam_tracker[uid]) > 4:
-        spam_muted[uid] = now_ts + 30
-        spam_tracker[uid] = []
-        return True
-    return False
-
-# میدل‌ور ضد اسپم برای callback query
-original_callback_handler = bot.callback_query_handler
-
-def anti_spam_callback(func):
-    def wrapper(c):
-        uid = c.from_user.id
-        if uid == ADMIN_ID:
-            return func(c)
-        if check_spam(uid):
-            remaining = int(spam_muted.get(uid, time.time()) - time.time())
-            if remaining < 0: remaining = 0
-            bot.answer_callback_query(c.id, f"⛔ اسپم شناسایی شد!\nلطفاً {remaining} ثانیه صبر کنید.", show_alert=True)
-            return
-        return func(c)
-    return wrapper
-
-# اعمال ضد اسپم به callback query handler های ربات
-_orig_process_new_updates = bot.process_new_updates
-
-def patched_process_new_updates(updates):
-    for update in updates:
-        if update.callback_query:
-            uid = update.callback_query.from_user.id
-            if uid != ADMIN_ID and check_spam(uid):
-                remaining = int(spam_muted.get(uid, time.time()) - time.time())
-                if remaining < 0: remaining = 0
-                try:
-                    bot.answer_callback_query(update.callback_query.id, f"⛔ اسپم شناسایی شد!\nلطفاً {remaining} ثانیه صبر کنید.", show_alert=True)
-                except: pass
-                updates = [u for u in updates if u != update]
-    _orig_process_new_updates(updates)
-
-bot.process_new_updates = patched_process_new_updates
-# ================================================================
-
-# ==================== ویژگی ۲: وضعیت سرورها ====================
+# ۱. بخش وضعیت سرورها (سمت کاربر)
 @bot.callback_query_handler(func=lambda c: c.data == "server_status")
-def server_status(c):
-    res = settings_col.find_one({"key": "server_status_text"})
-    status_text = res['value'] if res else "وضعیت سرورها در دسترس نیست."
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔄 بروزرسانی", callback_data="server_status"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
-    bot.edit_message_text(f"🖥 وضعیت سرورها:\n\n{status_text}", c.message.chat.id, c.message.message_id, reply_markup=kb)
+def view_server_status(c):
+    status_data = settings_col.find_one({"key": "global_server_status"})
+    txt = status_data["value"] if status_data else "🟢 تمامی سرورها پرسرعت و متصل هستند."
+    bot.edit_message_text(f"⚡ آخرین وضعیت سرورها:\n\n{txt}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
-@bot.callback_query_handler(func=lambda c: c.data == "adm_server_status")
-def adm_server_status(c):
+# ۲. مدیریت وضعیت سرورها (سمت ادمین)
+@bot.callback_query_handler(func=lambda c: c.data == "adm_update_servers")
+def adm_update_servers(c):
     if c.from_user.id != ADMIN_ID: return
-    res = settings_col.find_one({"key": "server_status_text"})
-    current = res['value'] if res else ""
-    user_states[ADMIN_ID] = {"state": "ADM_SET_SERVER_STATUS"}
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text(f"🖥 وضعیت فعلی سرورها:\n\n{current}\n\n✏️ متن جدید را ارسال کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    user_states[ADMIN_ID] = {"state": "WAIT_SERVER_STATUS_TEXT"}
+    bot.send_message(ADMIN_ID, "✍️ متن جدید وضعیت سرورها را بنویسید (مثلا: نپستر متصل 🔥 | وایرگارد عالی 🟢):")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SET_SERVER_STATUS")
-def save_server_status(m):
-    settings_col.update_one({"key": "server_status_text"}, {"$set": {"value": m.text.strip()}})
-    bot.send_message(ADMIN_ID, "✅ وضعیت سرورها بروزرسانی شد.")
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_SERVER_STATUS_TEXT")
+def save_server_status_text(m):
+    txt = m.text.strip()
+    settings_col.update_one({"key": "global_server_status"}, {"$set": {"value": txt}}, upsert=True)
+    bot.send_message(ADMIN_ID, "✅ وضعیت جدید سرورها با موفقیت در دیتابیس ذخیره شد.")
     user_states[ADMIN_ID] = None
-# ================================================================
 
-# ==================== ویژگی ۳: اطلاعیه هوشمند ۱ دقیقه‌ای ====================
-@bot.callback_query_handler(func=lambda c: c.data == "announcements")
-def announcements_list(c):
-    items = list(announcements_col.find({}).sort("_id", -1).limit(10))
-    if not items:
-        bot.edit_message_text("📢 اطلاعیه‌ای موجود نیست.", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
-        return
-    txt = "📢 آخرین اطلاعیه‌ها:\n\n"
-    for item in items:
-        txt += f"🔹 {item.get('date','')}\n{item.get('text','')}\n\n"
-    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+# ۳. نمایش آرشیو اطلاعیه‌ها (سمت کاربر)
+@bot.callback_query_handler(func=lambda c: c.data == "view_announcements")
+def view_announcements(c):
+    ann_data = settings_col.find_one({"key": "announcements_archive"})
+    txt = ann_data["value"] if ann_data else "💡 اطلاعیه جدیدی ثبت نشده است."
+    bot.edit_message_text(f"📋 تاریخچه اطلاعیه‌های اخیر ربات:\n\n{txt}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
-@bot.callback_query_handler(func=lambda c: c.data == "adm_smart_announce")
-def adm_smart_announce(c):
+# ۴. ارسال اطلاعیه هوشمند ۱ دقیقه‌ای با حذف خودکار (سمت ادمین)
+@bot.callback_query_handler(func=lambda c: c.data == "adm_smart_announcement")
+def adm_smart_announcement(c):
     if c.from_user.id != ADMIN_ID: return
-    user_states[ADMIN_ID] = {"state": "ADM_SMART_ANNOUNCE"}
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text("📢 اطلاعیه هوشمند:\n\nمتن اطلاعیه را ارسال کنید.\nپیام پس از ۶۰ ثانیه از چت کاربران حذف خواهد شد و در تاریخچه ذخیره می‌شود.", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    user_states[ADMIN_ID] = {"state": "WAIT_SMART_ANN"}
+    bot.send_message(ADMIN_ID, "📢 متن اطلاعیه هوشمند را بنویسید. این پیام برای همه ارسال شده و پس از ۱ دقیقه به طور خودکار پاک می‌شود:")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SMART_ANNOUNCE")
-def do_smart_announce(m):
-    text = m.text
-    date_str = now_str()
-    # ذخیره در دیتابیس برای تاریخچه
-    announcements_col.insert_one({"text": text, "date": date_str})
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_SMART_ANN")
+def do_smart_announcement(m):
+    ann_text = m.text.strip()
+    user_states[ADMIN_ID] = None
+    
+    # ذخیره در آرشیو دایمی دیتابیس برای دکمه اطلاعیه ها
+    settings_col.update_one({"key": "announcements_archive"}, {"$set": {"value": f"⏱ [{now_str()}]\n📢 {ann_text}"}}, upsert=True)
     
     users = list(users_col.find({}, {"user_id": 1}))
-    sent_messages = []  # لیست (user_id, message_id) برای حذف بعدی
-    ok = 0
-    for u in users:
+    bot.send_message(ADMIN_ID, f"🚀 فرآیند ارسال اطلاعیه به {len(users)} کاربر آغاز شد. حذف خودکار پس از ۶۰ ثانیه فعال است...")
+    
+    def send_and_burn(u_id, text_to_send):
         try:
-            sent = bot.send_message(u['user_id'], f"📢 اطلاعیه مهم:\n\n{text}\n\n⏱ این پیام پس از ۶۰ ثانیه حذف می‌شود")
-            sent_messages.append({"uid": u['user_id'], "mid": sent.message_id})
-            ok += 1
-        except: pass
-    
-    user_states[ADMIN_ID] = None
-    bot.send_message(ADMIN_ID, f"✅ اطلاعیه برای {ok} نفر ارسال شد. پس از ۶۰ ثانیه حذف می‌شود.")
-    
-    # حذف پیام‌ها پس از ۶۰ ثانیه در یک thread جداگانه
-    def delete_after_60(messages):
-        time.sleep(60)
-        for item in messages:
-            try:
-                bot.delete_message(item['uid'], item['mid'])
-            except: pass
-    
-    Thread(target=delete_after_60, args=(sent_messages,), daemon=True).start()
-# =============================================================================
+            sent_msg = bot.send_message(u_id, f"🚨 **اطلاعیه موقت (حذف پس از ۱ دقیقه):**\n\n{text_to_send}", parse_mode="Markdown")
+            # ایجاد ترد مستقل زمانی برای حذف دقیق پیام راس ۱ دقیقه
+            def burn_timer():
+                time.sleep(60)
+                try:
+                    bot.delete_message(u_id, sent_msg.message_id)
+                except:
+                    pass
+            Thread(target=burn_timer).start()
+        except:
+            pass
 
-# ==================== ویژگی ۴: سطح‌بندی هوشمند کاربران ====================
-def get_user_level(success_payments):
-    if success_payments >= 15:
-        return "💎 VIP"
-    elif success_payments >= 7:
-        return "🥇 طلایی"
-    elif success_payments >= 4:
-        return "🥈 نقره‌ای"
-    else:
-        return "🥉 برنزی"
+    for u in users:
+        Thread(target=send_and_burn, args=(u['user_id'], ann_text)).start()
+        
+    bot.send_message(ADMIN_ID, "✅ اطلاعیه‌ها ارسال شدند و زمان‌بندی حذف خودکار فعال گردید.")
 
-@bot.callback_query_handler(func=lambda c: c.data == "price_vip_exclusive")
-def price_vip_exclusive(c):
-    uid = c.from_user.id
-    user = users_col.find_one({"user_id": uid})
-    if not user or get_user_level(user.get("success_payments", 0)) != "💎 VIP":
-        bot.answer_callback_query(c.id, "❌ این بخش فقط برای کاربران VIP قابل دسترس است.", show_alert=True)
-        return
-    txt = "💎 سرور اختصاصی VIP\n\nبرای دریافت اطلاعات سرور اختصاصی VIP با پشتیبانی تماس بگیرید."
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📞 تماس با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@','')}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
-    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
-# ===========================================================================
-
-# ==================== ویژگی ۵: آمار کاربران فعال ====================
+# ۵. آمار کاربران فعال (امروز، هفته، ماه) در پنل مدیریت
 @bot.callback_query_handler(func=lambda c: c.data == "adm_active_stats")
 def adm_active_stats(c):
     if c.from_user.id != ADMIN_ID: return
-    now_dt = datetime.now()
-    today_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = now_dt - timedelta(days=7)
-    month_start = now_dt - timedelta(days=30)
+    now = datetime.now()
     
-    today_count = users_col.count_documents({"last_activity": {"$gte": today_start}})
-    week_count = users_col.count_documents({"last_activity": {"$gte": week_start}})
-    month_count = users_col.count_documents({"last_activity": {"$gte": month_start}})
-    total_count = users_col.count_documents({})
+    today_count = users_col.count_documents({"last_activity": {"$gte": now - timedelta(days=1)}})
+    week_count = users_col.count_documents({"last_activity": {"$gte": now - timedelta(days=7)}})
+    month_count = users_col.count_documents({"last_activity": {"$gte": now - timedelta(days=30)}})
+    
+    txt = f"📊 آمار فعالیت کاربران بر اساس دیتابیس:\n\n"
+    txt += f"🟢 تعداد فعالان ۲۴ ساعت گذشته: {today_count} کاربر\n"
+    txt += f"🟡 تعداد فعالان ۷ روز گذشته: {week_count} کاربر\n"
+    txt += f"🔵 تعداد فعالان ۳۰ روز گذشته: {month_count} کاربر\n"
     
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(f"📅 امروز: {today_count} نفر", callback_data="adm_active_today"))
-    kb.add(types.InlineKeyboardButton(f"📆 هفته گذشته: {week_count} نفر", callback_data="adm_active_week"))
-    kb.add(types.InlineKeyboardButton(f"🗓 ماه گذشته: {month_count} نفر", callback_data="adm_active_month"))
-    kb.add(types.InlineKeyboardButton(f"👥 کل کاربران: {total_count} نفر", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text(
-        f"📊 آمار کاربران فعال:\n\n"
-        f"📅 امروز: {today_count} نفر\n"
-        f"📆 هفته گذشته: {week_count} نفر\n"
-        f"🗓 ماه گذشته: {month_count} نفر\n"
-        f"👥 کل کاربران: {total_count} نفر",
-        c.message.chat.id, c.message.message_id, reply_markup=kb
-    )
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
+    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-@bot.callback_query_handler(func=lambda c: c.data in ["adm_active_today", "adm_active_week", "adm_active_month"])
-def adm_active_detail(c):
-    if c.from_user.id != ADMIN_ID: return
-    # این callback فقط نمایشی است و آمار را refresh می‌کند
-    adm_active_stats(c)
-# =====================================================================
-
-# ==================== ویژگی ۶: آموزش اتصال داینامیک ====================
-@bot.callback_query_handler(func=lambda c: c.data == "tutorial")
-def tutorial_menu(c):
-    res = settings_col.find_one({"key": "tutorial_status"})
-    if res and res['value'] == 0:
-        bot.answer_callback_query(c.id, "⚠️ بخش آموزش در حال حاضر توسط ادمین بسته شده است.", show_alert=True)
+# ۶. بخش آموزش اتصال (سمت کاربر)
+@bot.callback_query_handler(func=lambda c: c.data == "user_learn_menu")
+def user_learn_menu(c):
+    if not get_setting('learn_status'):
+        bot.answer_callback_query(c.id, "⚠️ بخش آموزش اتصال در حال حاضر توسط ادمین خاموش شده است.", show_alert=True)
         return
-    
-    items = list(tutorial_col.find({}))
+        
     kb = types.InlineKeyboardMarkup()
-    for item in items:
-        kb.add(types.InlineKeyboardButton(item['label'], callback_data=f"tut_{item['os']}"))
+    kb.add(types.InlineKeyboardButton("🤖 آموزش اندروید", callback_data="learn_os_android"), types.InlineKeyboardButton("🍏 آموزش آیفون (iOS)", callback_data="learn_os_ios"))
+    kb.add(types.InlineKeyboardButton("💻 آموزش ویندوز", callback_data="learn_os_windows"), types.InlineKeyboardButton("🍏 آموزش مک‌بوک", callback_data="learn_os_mac"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
-    bot.edit_message_text("📚 آموزش اتصال\n\nسیستم‌عامل خود را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.edit_message_text("📱 لطفاً سیستم‌عامل خود را جهت دریافت آموزش اتصال انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("tut_") and not c.data.startswith("tut_adm_"))
-def show_tutorial(c):
-    os_key = c.data.replace("tut_", "")
-    item = tutorial_col.find_one({"os": os_key})
-    if not item:
-        bot.answer_callback_query(c.id, "محتوا یافت نشد", show_alert=True)
+@bot.callback_query_handler(func=lambda c: c.data.startswith("learn_os_"))
+def show_os_learn_content(c):
+    os_name = c.data.replace("learn_os_", "")
+    data = settings_col.find_one({"key": f"learn_{os_name}"})
+    
+    if not data:
+        bot.answer_callback_query(c.id, "💡 هنوز آموزشی برای این سیستم عامل ثبت نشده است.", show_alert=True)
         return
+        
+    val = data["value"]
+    # بازگشت به منوی اصلی آموزش
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به لیست سیستم‌عامل‌ها", callback_data="user_learn_menu"))
+    
+    # تشخیص داینامیک رسانه یا متن بودن فیلد ثبت شده آموزش
+    if isinstance(val, dict) and "file_id" in val:
+        bot.delete_message(c.message.chat.id, c.message.message_id)
+        if val["type"] == "photo":
+            bot.send_photo(c.message.chat.id, val["file_id"], caption=val.get("caption", ""), reply_markup=kb)
+        elif val["type"] == "document":
+            bot.send_document(c.message.chat.id, val["file_id"], caption=val.get("caption", ""), reply_markup=kb)
+        elif val["type"] == "video":
+            bot.send_video(c.message.chat.id, val["file_id"], caption=val.get("caption", ""), reply_markup=kb)
+    else:
+        bot.edit_message_text(str(val), c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+# ۷. مدیریت بخش آموزش اتصال (سمت ادمین)
+@bot.callback_query_handler(func=lambda c: c.data == "adm_manage_learn")
+def adm_manage_learn(c):
+    if c.from_user.id != ADMIN_ID: return
+    l_status = "✅ روشن" if get_setting('learn_status') else "❌ خاموش"
     
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به آموزش‌ها", callback_data="tutorial"))
-    
-    content_type = item.get("type", "text")
-    if content_type == "text":
-        bot.edit_message_text(f"{item['label']}\n\n{item['content']}", c.message.chat.id, c.message.message_id, reply_markup=kb)
-    elif content_type == "photo":
-        bot.send_photo(c.from_user.id, item['file_id'], caption=item.get('content', item['label']), reply_markup=kb)
-    elif content_type == "video":
-        bot.send_video(c.from_user.id, item['file_id'], caption=item.get('content', item['label']), reply_markup=kb)
-    elif content_type == "document":
-        bot.send_document(c.from_user.id, item['file_id'], caption=item.get('content', item['label']), reply_markup=kb)
+    kb.add(types.InlineKeyboardButton(f"وضعیت کل بخش آموزش: {l_status}", callback_data="tog_learn_status"))
+    kb.add(types.InlineKeyboardButton("✏️ تنظیم آموزش اندروید", callback_data="adm_edit_os_android"), types.InlineKeyboardButton("✏️ تنظیم آموزش آیفون", callback_data="adm_edit_os_ios"))
+    kb.add(types.InlineKeyboardButton("✏️ تنظیم آموزش ویندوز", callback_data="adm_edit_os_windows"), types.InlineKeyboardButton("✏️ تنظیم آموزش مک", callback_data="adm_edit_os_mac"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
+    bot.edit_message_text("⚙️ مدیریت بخش آموزش اتصال ربات:\nشما میتوانید کل این بخش را خاموش/روشن کنید یا آموزش هر سیستم عامل را به صورت متن یا فایل آپدیت کنید.", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# مدیریت آموزش‌ها توسط ادمین
-@bot.callback_query_handler(func=lambda c: c.data == "adm_tutorial_mgr")
-def adm_tutorial_mgr(c):
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_edit_os_"))
+def adm_edit_os_start(c):
     if c.from_user.id != ADMIN_ID: return
-    res = settings_col.find_one({"key": "tutorial_status"})
-    status = "✅ باز" if (res and res['value'] == 1) else "❌ بسته"
-    
-    items = list(tutorial_col.find({}))
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(f"بخش آموزش: {status}", callback_data="tog_tutorial_status_adm"))
-    kb.add(types.InlineKeyboardButton("➕ افزودن سیستم‌عامل جدید", callback_data="tut_adm_add_os"))
-    for item in items:
-        kb.add(types.InlineKeyboardButton(f"✏️ ویرایش {item['label']}", callback_data=f"tut_adm_edit_{item['os']}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
-    bot.edit_message_text("📚 مدیریت آموزش اتصال:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    target_os = c.data.replace("adm_edit_os_", "")
+    user_states[ADMIN_ID] = {"state": "WAIT_OS_LEARN_DATA", "os": target_os}
+    bot.send_message(ADMIN_ID, f"📥 آموزش جدید برای سیستم عامل [{target_os}] را بفرستید.\nشما می‌توانید متن خالی بفرستید، عکس آپلود کنید و یا فایل نصبی برنامه را بفرستید تا ذخیره شود:")
 
-@bot.callback_query_handler(func=lambda c: c.data == "tog_tutorial_status_adm")
-def tog_tutorial_status(c):
-    if c.from_user.id != ADMIN_ID: return
-    res = settings_col.find_one({"key": "tutorial_status"})
-    current_val = res['value'] if res else 1
-    settings_col.update_one({"key": "tutorial_status"}, {"$set": {"value": 0 if current_val == 1 else 1}})
-    adm_tutorial_mgr(c)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("tut_adm_edit_"))
-def tut_adm_edit(c):
-    if c.from_user.id != ADMIN_ID: return
-    os_key = c.data.replace("tut_adm_edit_", "")
-    item = tutorial_col.find_one({"os": os_key})
-    if not item: return
-    user_states[ADMIN_ID] = {"state": "TUT_WAIT_CONTENT", "os": os_key}
-    bot.send_message(ADMIN_ID, f"✏️ ویرایش آموزش {item['label']}\n\nمحتوای جدید را ارسال کنید:\n(می‌توانید متن، عکس، ویدیو یا فایل ارسال کنید)")
-
-@bot.callback_query_handler(func=lambda c: c.data == "tut_adm_add_os")
-def tut_adm_add_os(c):
-    if c.from_user.id != ADMIN_ID: return
-    user_states[ADMIN_ID] = {"state": "TUT_WAIT_NEW_OS_NAME"}
-    bot.send_message(ADMIN_ID, "نام کلید سیستم‌عامل را وارد کنید (مثل: linux یا router):")
-
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_WAIT_NEW_OS_NAME")
-def tut_save_new_os_name(m):
-    os_key = m.text.strip().lower().replace(" ", "_")
-    user_states[ADMIN_ID] = {"state": "TUT_WAIT_NEW_OS_LABEL", "os": os_key}
-    bot.send_message(ADMIN_ID, f"کلید: {os_key}\nحالا نام نمایشی را با ایموجی وارد کنید (مثل: 🐧 لینوکس):")
-
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_WAIT_NEW_OS_LABEL")
-def tut_save_new_os_label(m):
-    label = m.text.strip()
-    os_key = user_states[ADMIN_ID]["os"]
-    user_states[ADMIN_ID] = {"state": "TUT_WAIT_CONTENT", "os": os_key, "label": label, "is_new": True}
-    bot.send_message(ADMIN_ID, f"سیستم‌عامل جدید: {label}\nحالا محتوای آموزش را ارسال کنید:\n(متن، عکس، ویدیو یا فایل)")
-
-# هندلر محتوای آموزش — متن
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_WAIT_CONTENT", content_types=['text'])
-def tut_save_text_content(m):
-    data = user_states[ADMIN_ID]
-    os_key = data["os"]
-    label = data.get("label")
-    
-    update_data = {"content": m.text.strip(), "type": "text"}
-    if label:
-        update_data["label"] = label
-    
-    tutorial_col.update_one({"os": os_key}, {"$set": update_data}, upsert=True)
-    if data.get("is_new"):
-        tutorial_col.update_one({"os": os_key}, {"$set": {"os": os_key}}, upsert=True)
-    bot.send_message(ADMIN_ID, f"✅ آموزش '{os_key}' با موفقیت بروزرسانی شد (متن).")
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_OS_LEARN_DATA", content_types=['text', 'photo', 'document', 'video'])
+def adm_edit_os_save(m):
+    target_os = user_states[ADMIN_ID]["os"]
     user_states[ADMIN_ID] = None
-
-# هندلر محتوای آموزش — عکس
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_WAIT_CONTENT", content_types=['photo'])
-def tut_save_photo_content(m):
-    data = user_states[ADMIN_ID]
-    os_key = data["os"]
-    label = data.get("label")
-    file_id = m.photo[-1].file_id
-    caption = m.caption or ""
     
-    update_data = {"content": caption, "type": "photo", "file_id": file_id}
-    if label:
-        update_data["label"] = label
-    
-    tutorial_col.update_one({"os": os_key}, {"$set": update_data}, upsert=True)
-    bot.send_message(ADMIN_ID, f"✅ آموزش '{os_key}' با موفقیت بروزرسانی شد (عکس).")
-    user_states[ADMIN_ID] = None
-
-# هندلر محتوای آموزش — ویدیو
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_WAIT_CONTENT", content_types=['video'])
-def tut_save_video_content(m):
-    data = user_states[ADMIN_ID]
-    os_key = data["os"]
-    label = data.get("label")
-    file_id = m.video.file_id
-    caption = m.caption or ""
-    
-    update_data = {"content": caption, "type": "video", "file_id": file_id}
-    if label:
-        update_data["label"] = label
-    
-    tutorial_col.update_one({"os": os_key}, {"$set": update_data}, upsert=True)
-    bot.send_message(ADMIN_ID, f"✅ آموزش '{os_key}' با موفقیت بروزرسانی شد (ویدیو).")
-    user_states[ADMIN_ID] = None
-
-# هندلر محتوای آموزش — فایل
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_WAIT_CONTENT", content_types=['document'])
-def tut_save_document_content(m):
-    data = user_states[ADMIN_ID]
-    if data.get("state") != "TUT_WAIT_CONTENT":
-        return
-    os_key = data["os"]
-    label = data.get("label")
-    file_id = m.document.file_id
-    caption = m.caption or ""
-    
-    update_data = {"content": caption, "type": "document", "file_id": file_id}
-    if label:
-        update_data["label"] = label
-    
-    tutorial_col.update_one({"os": os_key}, {"$set": update_data}, upsert=True)
-    bot.send_message(ADMIN_ID, f"✅ آموزش '{os_key}' با موفقیت بروزرسانی شد (فایل).")
-    user_states[ADMIN_ID] = None
-# =========================================================================
-
-# به‌روزرسانی last_activity در هر callback
-_original_process = bot.process_new_updates
-
-def update_activity_middleware(updates):
-    for update in updates:
-        if update.callback_query:
-            uid = update.callback_query.from_user.id
-            users_col.update_one({"user_id": uid}, {"$set": {"last_activity": datetime.now()}})
-        elif update.message:
-            uid = update.message.from_user.id
-            users_col.update_one({"user_id": uid}, {"$set": {"last_activity": datetime.now()}})
-    patched_process_new_updates(updates)
-
-bot.process_new_updates = update_activity_middleware
+    if m.content_type == 'text':
+        db_val = m.text.strip()
+    elif m.content_type == 'photo':
+        db_val = {"type": "photo", "file_id": m.photo[-1].file_id, "caption": m.caption or ""}
+    elif m.content_type == 'document':
+        db_val = {"type": "document", "file_id": m.document.file_id, "caption": m.caption or ""}
+    elif m.content_type == 'video':
+        db_val = {"type": "video", "file_id": m.video.file_id, "caption": m.caption or ""}
+        
+    settings_col.update_one({"key": f"learn_{target_os}"}, {"$set": {"value": db_val}}, upsert=True)
+    bot.send_message(ADMIN_ID, f"✅ آموزش سیستم عامل {target_os} با موفقیت در دیتابیس ابری ثبت و بروزرسانی شد.")
 
 # --------------- WEB ---------------
 
