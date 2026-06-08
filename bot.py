@@ -16,7 +16,7 @@ SUPPORT_ID = "@Amir_confing_meli"
 bot = telebot.TeleBot(TOKEN)
 app = Flask('')
 
-# ---------------- DB (Changed to MongoDB) ----------------
+# ---------------- DB (MongoDB) ----------------
 
 MONGO_URI = "mongodb+srv://1raven1390_db_user:iOlmB4Azr3SrrkVZ@bot.te88ask.mongodb.net/?retryWrites=true&w=majority&appName=Bot"
 client = MongoClient(MONGO_URI)
@@ -68,7 +68,6 @@ def format_p(x):
 def now_str():
     return datetime.now().strftime("%Y/%m/%d - %H:%M:%S")
 
-# نسخه اصلاح‌شده و نهایی منوی اصلی با ایموجی‌های جذاب
 def main_menu():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🛒 خرید سرویس پرسرعت", callback_data="buy"), types.InlineKeyboardButton("📊 تعرفه خدمات", callback_data="price"))
@@ -94,10 +93,9 @@ def is_member(user_id):
         return True
     except: return True
 
-# ----------------- ANTI SPAM MIDDLEWARE (FIXED) -----------------
+# ----------------- ANTI SPAM MIDDLEWARE -----------------
 @bot.middleware_handler(update_types=['message', 'callback_query'])
 def anti_spam_middleware(bot_instance, update):
-    # دریافت شناسه کاربری به صورت امن بدون ایجاد خطا برای دکمه‌ها (حل ارور AttributeError)
     if hasattr(update, 'message') and update.message is not None:
         uid = update.message.from_user.id
     elif hasattr(update, 'callback_query') and update.callback_query is not None:
@@ -137,7 +135,7 @@ def anti_spam_middleware(bot_instance, update):
             except: pass
         return telebot.handler_backends.CancelUpdate()
 
-# --------------- START & ADMIN COMMAND (FIXED) ---------------
+# --------------- START & ADMIN COMMAND ---------------
 
 @bot.message_handler(commands=['start'])
 def start(m):
@@ -242,10 +240,6 @@ def toggle_settings(c):
     current = get_setting(key)
     settings_col.update_one({"key": key}, {"$set": {"value": 0 if current else 1}})
     adm_settings(c)
-
-@bot.callback_query_handler(func=lambda c: c.data == "admin_back")
-def admin_back(c):
-    admin_panel(c.message)
 
 # --------------- CHARGE ---------------
 
@@ -513,8 +507,15 @@ def select_volume(c):
         bot.answer_callback_query(c.id, "❌ابتدا حساب خود را شارژ کنید", show_alert=True); return
     user_states[uid] = {"state":"CONFIRM_BUY","plan":plan,"volume":volume,"price":price}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ تایید", callback_data="final_buy"), types.InlineKeyboardButton("❌ لغو", callback_data="back"))
+    kb.add(types.InlineKeyboardButton("✅ تایید", callback_data="final_buy"), types.InlineKeyboardButton("❌ لغو", callback_data="cancel_buy"))
     bot.send_message(uid, f"آیا از خرید سرویس {plan} حجم {volume} به مبلغ {format_p(price)} اطمینان دارید؟", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "cancel_buy")
+def cancel_buy(c):
+    uid = c.from_user.id
+    user_states[uid] = None
+    try: bot.edit_message_text("👇 منوی اصلی:", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
+    except: bot.send_message(c.message.chat.id, "👇 منوی اصلی:", reply_markup=main_menu())
 
 @bot.callback_query_handler(func=lambda c: c.data == "final_buy")
 def final_buy(c):
@@ -616,7 +617,7 @@ def account(c):
 def support(c):
     bot.edit_message_text(f"📞 پشتیبانی:\n{SUPPORT_ID}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
-# --------------- BACK (FIXED) ---------------
+# --------------- BACK ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "back")
 def back(c):
@@ -729,17 +730,34 @@ def adm_balance_edit(m):
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, "انجام شد")
 
+# [اصلاح باگ ۲] - پیاده سازی مرحله کلیک بر روی دکمه ارسال همگانی
+@bot.callback_query_handler(func=lambda c: c.data == "adm_broadcast")
+def adm_broadcast_start(c):
+    if c.from_user.id != ADMIN_ID: return
+    user_states[ADMIN_ID] = {"state": "ADM_BC"}
+    bot.send_message(ADMIN_ID, "✍️ متن پیام همگانی خود را ارسال کنید:")
+
 @bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_BC")
 def do_broadcast(m):
-    users = users_col.find({}, {"user_id": 1})
+    users = list(users_col.find({}, {"user_id": 1}))
     ok = 0
-    for u in users:
-        try: bot.send_message(u['user_id'], m.text); ok += 1
-        except: pass
+    bot.send_message(ADMIN_ID, f"🚀 فرآیند ارسال پیام همگانی برای {len(users)} کاربر شروع شد...")
+    
+    def broadcast_thread():
+        nonlocal ok
+        for u in users:
+            try: 
+                bot.send_message(u['user_id'], m.text)
+                ok += 1
+                time.sleep(0.04) # جلوگیری از لیمیت شدن ربات توسط تلگرام
+            except: 
+                pass
+        bot.send_message(ADMIN_ID, f"📢 ارسال همگانی به پایان رسید.\n✅ موفقیت آمیز: {ok} نفر")
+        
+    Thread(target=broadcast_thread).start()
     user_states[ADMIN_ID] = None
-    bot.send_message(ADMIN_ID, f"ارسال شد برای {ok} نفر")
 
-# --------------- مدیریت قیمت‌ها و حجم‌ها توسط ادمین (FIXED_FIXED) ---------------
+# --------------- مدیریت قیمت‌ها و حجم‌ها توسط ادمین ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_change_prices")
 def adm_change_prices(c):
@@ -875,14 +893,12 @@ def fjdel_confirm(c):
 
 # -------------------- قابلیت‌های تکمیلی --------------------
 
-# ۱. بخش وضعیت سرورها (سمت کاربر)
 @bot.callback_query_handler(func=lambda c: c.data == "server_status")
 def view_server_status(c):
     status_data = settings_col.find_one({"key": "global_server_status"})
     txt = status_data["value"] if status_data else "🟢 تمامی سرورها پرسرعت و متصل هستند."
     bot.edit_message_text(f"⚡ آخرین وضعیت سرورها:\n\n{txt}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
-# ۲. مدیریت وضعیت سرورها (سمت ادمین)
 @bot.callback_query_handler(func=lambda c: c.data == "adm_update_servers")
 def adm_update_servers(c):
     if c.from_user.id != ADMIN_ID: return
@@ -896,49 +912,47 @@ def save_server_status_text(m):
     bot.send_message(ADMIN_ID, "✅ وضعیت جدید سرورها با موفقیت در دیتابیس ذخیره شد.")
     user_states[ADMIN_ID] = None
 
-# ۳. نمایش آرشیو اطلاعیه‌ها (سمت کاربر)
 @bot.callback_query_handler(func=lambda c: c.data == "view_announcements")
 def view_announcements(c):
     ann_data = settings_col.find_one({"key": "announcements_archive"})
     txt = ann_data["value"] if ann_data else "💡 اطلاعیه جدیدی ثبت نشده است."
     bot.edit_message_text(f"📢 تاریخچه اطلاعیه‌های اخیر ربات:\n\n{txt}", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
-# ۴. ارسال اطلاعیه هوشمند ۱ دقیقه‌ای با حذف خودکار (سمت ادمین)
 @bot.callback_query_handler(func=lambda c: c.data == "adm_smart_announcement")
 def adm_smart_announcement(c):
     if c.from_user.id != ADMIN_ID: return
     user_states[ADMIN_ID] = {"state": "WAIT_SMART_ANN"}
     bot.send_message(ADMIN_ID, "📢 متن اطلاعیه هوشمند را بنویسید. این پیام برای همه ارسال شده و پس از ۱ دقیقه به طور خودکار پاک می‌شود:")
 
+# [اصلاح باگ ۵] - بهینه‌سازی الگوریتم حذف خودکار بدون ساخت ده‌ها ترید همزمان جهت جلوگیری از کرش
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_SMART_ANN")
 def do_smart_announcement(m):
     ann_text = m.text.strip()
     user_states[ADMIN_ID] = None
     
     settings_col.update_one({"key": "announcements_archive"}, {"$set": {"value": f"⏱ [{now_str()}]\n📢 {ann_text}"}}, upsert=True)
-    
     users = list(users_col.find({}, {"user_id": 1}))
-    bot.send_message(ADMIN_ID, f"🚀 فرآیند ارسال اطلاعیه به {len(users)} کاربر آغاز شد. حذف خودکار پس از ۶۰ ثانیه فعال است...")
+    bot.send_message(ADMIN_ID, f"🚀 فرآیند ارسال اطلاعیه به {len(users)} کاربر آغاز شد. فرآیند حذف خودکار پس از ۶۰ ثانیه به صورت کنترل شده فعال است...")
     
-    def send_and_burn(u_id, text_to_send):
-        try:
-            sent_msg = bot.send_message(u_id, f"🚨 **اطلاعیه موقت (حذف پس از ۱ دقیقه):**\n\n{text_to_send}", parse_mode="Markdown")
-            def burn_timer():
-                time.sleep(60)
-                try:
-                    bot.delete_message(u_id, sent_msg.message_id)
-                except:
-                    pass
-            Thread(target=burn_timer).start()
-        except:
-            pass
-
-    for u in users:
-        Thread(target=send_and_burn, args=(u['user_id'], ann_text)).start()
+    def burn_process():
+        sent_messages = []
+        for u in users:
+            try:
+                msg = bot.send_message(u['user_id'], f"🚨 **اطلاعیه موقت (حذف پس از ۱ دقیقه):**\n\n{ann_text}", parse_mode="Markdown")
+                sent_messages.append((u['user_id'], msg.message_id))
+                time.sleep(0.03)
+            except: pass
         
-    bot.send_message(ADMIN_ID, "✅ اطلاعیه‌ها ارسال شدند و زمان‌ب بندی حذف خودکار فعال گردید.")
+        time.sleep(60) # انتظار برای سوزاندن پیام‌ها
+        
+        for uid, msg_id in sent_messages:
+            try: 
+                bot.delete_message(uid, msg_id)
+                time.sleep(0.02)
+            except: pass
+            
+    Thread(target=burn_process).start()
 
-# ۵. آمار کاربران فعال (امروز، هفته، ماه) در پنل مدیریت
 @bot.callback_query_handler(func=lambda c: c.data == "adm_active_stats")
 def adm_active_stats(c):
     if c.from_user.id != ADMIN_ID: return
@@ -957,16 +971,36 @@ def adm_active_stats(c):
     kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# ۶. بخش آموزش اتصال (سمت کاربر)
+# [اصلاح باگ ۱] - حذف توابع تکراری بخش کدهای الحاقی قدیمی و یکپارچه سازی منوی پویای آموزش اتصال
 @bot.callback_query_handler(func=lambda c: c.data == "user_learn_menu")
 def user_learn_menu(c):
     if not get_setting('learn_status'):
         bot.answer_callback_query(c.id, "⚠️ بخش آموزش اتصال در حال حاضر توسط ادمین خاموش شده است.", show_alert=True)
         return
         
+    android_active = settings_col.find_one({"key": "btn_active_android"})
+    ios_active = settings_col.find_one({"key": "btn_active_ios"})
+    windows_active = settings_col.find_one({"key": "btn_active_windows"})
+    mac_active = settings_col.find_one({"key": "btn_active_mac"})
+    
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🤖 آموزش اندروید", callback_data="learn_os_android"), types.InlineKeyboardButton("🍏 آموزش آیفون (iOS)", callback_data="learn_os_ios"))
-    kb.add(types.InlineKeyboardButton("💻 آموزش ویندوز", callback_data="learn_os_windows"), types.InlineKeyboardButton("🍏 آموزش مک‌بوک", callback_data="learn_os_mac"))
+    row = []
+    
+    if not android_active or android_active.get("value") == 1:
+        row.append(types.InlineKeyboardButton("🤖 آموزش اندروید", callback_data="learn_os_android"))
+    if not ios_active or ios_active.get("value") == 1:
+        row.append(types.InlineKeyboardButton("🍏 آموزش آیفون (iOS)", callback_data="learn_os_ios"))
+    if row:
+        kb.add(*row)
+        row = []
+        
+    if not windows_active or windows_active.get("value") == 1:
+        row.append(types.InlineKeyboardButton("💻 آموزش ویندوز", callback_data="learn_os_windows"))
+    if not mac_active or mac_active.get("value") == 1:
+        row.append(types.InlineKeyboardButton("🍏 آموزش مک‌بوک", callback_data="learn_os_mac"))
+    if row:
+        kb.add(*row)
+        
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
     bot.edit_message_text("📱 لطفاً سیستم‌عامل خود را جهت دریافت آموزش اتصال انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -994,18 +1028,48 @@ def show_os_learn_content(c):
     else:
         bot.edit_message_text(str(val), c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# ۷. مدیریت بخش آموزش اتصال (سمت ادمین)
 @bot.callback_query_handler(func=lambda c: c.data == "adm_manage_learn")
 def adm_manage_learn(c):
     if c.from_user.id != ADMIN_ID: return
     l_status = "✅ روشن" if get_setting('learn_status') else "❌ خاموش"
     
+    def check_btn(key):
+        res = settings_col.find_one({"key": key})
+        return "🟢 نمایان" if not res or res.get("value") == 1 else "🔴 حذف شده"
+        
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton(f"وضعیت کل بخش آموزش: {l_status}", callback_data="tog_learn_status"))
-    kb.add(types.InlineKeyboardButton("✏️ تنظیم آموزش اندروید", callback_data="adm_edit_os_android"), types.InlineKeyboardButton("✏️ تنظیم آموزش آیفون", callback_data="adm_edit_os_ios"))
-    kb.add(types.InlineKeyboardButton("✏️ تنظیم آموزش ویندوز", callback_data="adm_edit_os_windows"), types.InlineKeyboardButton("✏️ تنظیم آموزش مک", callback_data="adm_edit_os_mac"))
+    
+    kb.add(
+        types.InlineKeyboardButton(f"اندروید: {check_btn('btn_active_android')}", callback_data="switch_btn_android"),
+        types.InlineKeyboardButton(f"آیفون: {check_btn('btn_active_ios')}", callback_data="switch_btn_ios")
+    )
+    kb.add(
+        types.InlineKeyboardButton(f"ویندوز: {check_btn('btn_active_windows')}", callback_data="switch_btn_windows"),
+        types.InlineKeyboardButton(f"مک‌بوک: {check_btn('btn_active_mac')}", callback_data="switch_btn_mac")
+    )
+    
+    kb.add(types.InlineKeyboardButton("✏️ تنظیم محتوای اندروید", callback_data="adm_edit_os_android"), types.InlineKeyboardButton("✏️ تنظیم محتوای آیفون", callback_data="adm_edit_os_ios"))
+    kb.add(types.InlineKeyboardButton("✏️ تنظیم محتوای ویندوز", callback_data="adm_edit_os_windows"), types.InlineKeyboardButton("✏️ تنظیم محتوای مک", callback_data="adm_edit_os_mac"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
-    bot.edit_message_text("⚙️ مدیریت بخش آموزش اتصال ربات:\nشما میتوانید کل این بخش را خاموش/روشن کنید یا آموزش هر سیستم عامل را به صورت متن یا فایل آپدیت کنید.", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    
+    bot.edit_message_text("⚙️ مدیریت بخش آموزش اتصال ربات:\nشما می‌توانید دکمه‌های سیستم‌عامل‌ها را فعال/غیرفعال کنید (حذف یا اضافه مثل آیفون و مک) یا محتوای آن‌ها را ویرایش کنید.", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("switch_btn_"))
+def process_switch_buttons(c):
+    if c.from_user.id != ADMIN_ID: return
+    target_os = c.data.replace("switch_btn_", "")
+    db_key = f"btn_active_{target_os}"
+    
+    current_status = settings_col.find_one({"key": db_key})
+    if not current_status or current_status.get("value") == 1:
+        settings_col.update_one({"key": db_key}, {"$set": {"value": 0}}, upsert=True)
+        bot.answer_callback_query(c.id, f"❌ دکمه آموزش {target_os} حذف شد.", show_alert=True)
+    else:
+        settings_col.update_one({"key": db_key}, {"$set": {"value": 1}}, upsert=True)
+        bot.answer_callback_query(c.id, f"✅ دکمه آموزش {target_os} مجددا اضافه شد.", show_alert=True)
+        
+    adm_manage_learn(c)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_edit_os_"))
 def adm_edit_os_start(c):
@@ -1031,20 +1095,8 @@ def adm_edit_os_save(m):
     settings_col.update_one({"key": f"learn_{target_os}"}, {"$set": {"value": db_val}}, upsert=True)
     bot.send_message(ADMIN_ID, f"✅ آموزش سیستم عامل {target_os} با موفقیت در دیتابیس ابری ثبت و بروزرسانی شد.")
 
-# --------------- WEB ---------------
-
-@app.route('/')
-def home(): return "OK - MongoDB Active"
-
-def run(): app.run(host="0.0.0.0", port=8080)
-
-
-# =========================================================================
-#  کدهای الحاقی (جدید) جهت رفع قطعی مشکلات بدون حذف/تغییر حتی ۱ خط از کدهای بالا
-# =========================================================================
-
-# ۱. اصلاح کامل و بازنویسی دکمه بازگشت در منوهای مختلف پنل مدیریت به صورت هوشمند
-@bot.callback_query_handler(func=lambda c: c.data in ["admin_back", "adm_change_prices_back", "adm_fjoin_mgr_back", "adm_manage_learn_back"], priority=2)
+# [اصلاح باگ ۱] - تصحیح عملکرد دکمه بازگشت ادمین بدون ارور Duplicate Handler
+@bot.callback_query_handler(func=lambda c: c.data in ["admin_back", "adm_change_prices_back", "adm_fjoin_mgr_back", "adm_manage_learn_back"])
 def fixed_admin_back_handler(c):
     if c.from_user.id != ADMIN_ID: return
     try:
@@ -1070,92 +1122,14 @@ def fixed_admin_back_handler(c):
             reply_markup=kb
         )
     except Exception as e:
-        # در صورت بروز تغییرات پیامی جدید ارسال می‌شود
         admin_panel(c.message)
 
-# ۲. ایجاد سیستم داینامیک حذف و اضافه کلیدها (مانند مک و آیفون) بر اساس ساختار آی‌او‌اس در بخش آموزش اتصال کاربر
-@bot.callback_query_handler(func=lambda c: c.data == "user_learn_menu", priority=2)
-def dynamic_ios_style_learn_menu(c):
-    if not get_setting('learn_status'):
-        bot.answer_callback_query(c.id, "⚠️ بخش آموزش اتصال در حال حاضر توسط ادمین خاموش شده است.", show_alert=True)
-        return
-    
-    # واکشی وضعیت فعال/غیرفعال بودن دکمه‌ها از حافظه ابری دیتابیس بدون تغییر کدهای پیشین
-    android_active = settings_col.find_one({"key": "btn_active_android"})
-    ios_active = settings_col.find_one({"key": "btn_active_ios"})
-    windows_active = settings_col.find_one({"key": "btn_active_windows"})
-    mac_active = settings_col.find_one({"key": "btn_active_mac"})
-    
-    kb = types.InlineKeyboardMarkup()
-    row = []
-    
-    # بررسی شرط نمایش (در صورت عدم غیرفعال‌سازی توسط مدیریت، دکمه اضافه یا حذف می‌شود)
-    if not android_active or android_active.get("value") == 1:
-        row.append(types.InlineKeyboardButton("🤖 آموزش اندروید", callback_data="learn_os_android"))
-    if not ios_active or ios_active.get("value") == 1:
-        row.append(types.InlineKeyboardButton("🍏 آموزش آیفون (iOS)", callback_data="learn_os_ios"))
-        
-    if row:
-        kb.add(*row)
-        row = []
-        
-    if not windows_active or windows_active.get("value") == 1:
-        row.append(types.InlineKeyboardButton("💻 آموزش ویندوز", callback_data="learn_os_windows"))
-    if not mac_active or mac_active.get("value") == 1:
-        row.append(types.InlineKeyboardButton("🍏 آموزش مک‌بوک", callback_data="learn_os_mac"))
-        
-    if row:
-        kb.add(*row)
-        
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
-    bot.edit_message_text("📱 لطفاً سیستم‌عامل خود را جهت دریافت آموزش اتصال انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+# --------------- WEB ---------------
 
-# ۳. اضافه کردن بخش تنظیمات سوئیچ دکمه‌ها به مدیریت آموزش اتصال (مخصوص ادمین)
-@bot.callback_query_handler(func=lambda c: c.data == "adm_manage_learn", priority=2)
-def dynamic_adm_manage_learn(c):
-    if c.from_user.id != ADMIN_ID: return
-    l_status = "✅ روشن" if get_setting('learn_status') else "❌ خاموش"
-    
-    # خواندن وضعیت دکمه‌ها برای نمایش وضعیت سوئیچ فعال/غیرفعال
-    def check_btn(key):
-        res = settings_col.find_one({"key": key})
-        return "🟢 نمایان" if not res or res.get("value") == 1 else "🔴 حذف شده"
-        
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(f"وضعیت کل بخش آموزش: {l_status}", callback_data="tog_learn_status"))
-    
-    # ساختار سوئیچ‌های داینامیک دکمه‌ها
-    kb.add(
-        types.InlineKeyboardButton(f"اندروید: {check_btn('btn_active_android')}", callback_data="switch_btn_android"),
-        types.InlineKeyboardButton(f"آیفون: {check_btn('btn_active_ios')}", callback_data="switch_btn_ios")
-    )
-    kb.add(
-        types.InlineKeyboardButton(f"ویندوز: {check_btn('btn_active_windows')}", callback_data="switch_btn_windows"),
-        types.InlineKeyboardButton(f"مک‌بوک: {check_btn('btn_active_mac')}", callback_data="switch_btn_mac")
-    )
-    
-    kb.add(types.InlineKeyboardButton("✏️ تنظیم محتوای اندروید", callback_data="adm_edit_os_android"), types.InlineKeyboardButton("✏️ تنظیم محتوای آیفون", callback_data="adm_edit_os_ios"))
-    kb.add(types.InlineKeyboardButton("✏️ تنظیم محتوای ویندوز", callback_data="adm_edit_os_windows"), types.InlineKeyboardButton("✏️ تنظیم محتوای مک", callback_data="adm_edit_os_mac"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
-    
-    bot.edit_message_text("⚙️ مدیریت بخش آموزش اتصال ربات:\nشما می‌توانید دکمه‌های سیستم‌عامل‌ها را فعال/غیرفعال کنید (حذف یا اضافه مثل آیفون و مک) یا محتوای آن‌ها را ویرایش کنید.", c.message.chat.id, c.message.message_id, reply_markup=kb)
+@app.route('/')
+def home(): return "OK - MongoDB Active"
 
-# ۴. پردازشگر کلیک بر روی سوئیچ‌های پویای حذف و اضافه دکمه‌ها
-@bot.callback_query_handler(func=lambda c: c.data.startswith("switch_btn_"))
-def process_switch_buttons(c):
-    if c.from_user.id != ADMIN_ID: return
-    target_os = c.data.replace("switch_btn_", "")
-    db_key = f"btn_active_{target_os}"
-    
-    current_status = settings_col.find_one({"key": db_key})
-    if not current_status or current_status.get("value") == 1:
-        settings_col.update_one({"key": db_key}, {"$set": {"value": 0}}, upsert=True)
-        bot.answer_callback_query(c.id, f"❌ دکمه آموزش {target_os} حذف شد و در منوی کاربر نمایش داده نمیشود.", show_alert=True)
-    else:
-        settings_col.update_one({"key": db_key}, {"$set": {"value": 1}}, upsert=True)
-        bot.answer_callback_query(c.id, f"✅ دکمه آموزش {target_os} مجددا اضافه شد و به کاربر نمایش داده میشود.", show_alert=True)
-        
-    dynamic_adm_manage_learn(c)
+def run(): app.run(host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
     Thread(target=run).start()
