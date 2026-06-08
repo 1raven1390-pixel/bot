@@ -93,12 +93,12 @@ def is_member(user_id):
         return True
     except: return True
 
-# ----------------- ANTI SPAM MIDDLEWARE -----------------
+# ----------------- ANTI SPAM MIDDLEWARE (FIXED) -----------------
 @bot.middleware_handler(update_types=['message', 'callback_query'])
 def anti_spam_middleware(bot_instance, update):
-    if hasattr(update, 'message') and update.message is not None:
+    if update.message is not None:
         uid = update.message.from_user.id
-    elif hasattr(update, 'callback_query') and update.callback_query is not None:
+    elif update.callback_query is not None:
         uid = update.callback_query.from_user.id
     else:
         return
@@ -730,7 +730,6 @@ def adm_balance_edit(m):
     user_states[ADMIN_ID] = None
     bot.send_message(ADMIN_ID, "انجام شد")
 
-# [اصلاح باگ ۲] - پیاده سازی مرحله کلیک بر روی دکمه ارسال همگانی
 @bot.callback_query_handler(func=lambda c: c.data == "adm_broadcast")
 def adm_broadcast_start(c):
     if c.from_user.id != ADMIN_ID: return
@@ -749,7 +748,7 @@ def do_broadcast(m):
             try: 
                 bot.send_message(u['user_id'], m.text)
                 ok += 1
-                time.sleep(0.04) # جلوگیری از لیمیت شدن ربات توسط تلگرام
+                time.sleep(0.04)
             except: 
                 pass
         bot.send_message(ADMIN_ID, f"📢 ارسال همگانی به پایان رسید.\n✅ موفقیت آمیز: {ok} نفر")
@@ -809,6 +808,8 @@ def FIXED_adm_delp_val(c):
         del current_prices[vol]
     settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
     bot.answer_callback_query(c.id, f"حجم {vol} با موفقیت حذف شد", show_alert=True)
+    
+    # تصحیح ریدایرکت برای جلوگیری از خطای تلگرام
     c.data = f"setp_{plan}"
     FIXED_adm_setp_plan(c)
 
@@ -924,7 +925,6 @@ def adm_smart_announcement(c):
     user_states[ADMIN_ID] = {"state": "WAIT_SMART_ANN"}
     bot.send_message(ADMIN_ID, "📢 متن اطلاعیه هوشمند را بنویسید. این پیام برای همه ارسال شده و پس از ۱ دقیقه به طور خودکار پاک می‌شود:")
 
-# [اصلاح باگ ۵] - بهینه‌سازی الگوریتم حذف خودکار بدون ساخت ده‌ها ترید همزمان جهت جلوگیری از کرش
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_SMART_ANN")
 def do_smart_announcement(m):
     ann_text = m.text.strip()
@@ -943,7 +943,7 @@ def do_smart_announcement(m):
                 time.sleep(0.03)
             except: pass
         
-        time.sleep(60) # انتظار برای سوزاندن پیام‌ها
+        time.sleep(60)
         
         for uid, msg_id in sent_messages:
             try: 
@@ -971,7 +971,8 @@ def adm_active_stats(c):
     kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# [اصلاح باگ ۱] - حذف توابع تکراری بخش کدهای الحاقی قدیمی و یکپارچه سازی منوی پویای آموزش اتصال
+# --------------- مدیریت پویای آموزش اتصال ---------------
+
 @bot.callback_query_handler(func=lambda c: c.data == "user_learn_menu")
 def user_learn_menu(c):
     if not get_setting('learn_status'):
@@ -1095,7 +1096,7 @@ def adm_edit_os_save(m):
     settings_col.update_one({"key": f"learn_{target_os}"}, {"$set": {"value": db_val}}, upsert=True)
     bot.send_message(ADMIN_ID, f"✅ آموزش سیستم عامل {target_os} با موفقیت در دیتابیس ابری ثبت و بروزرسانی شد.")
 
-# [اصلاح باگ ۱] - تصحیح عملکرد دکمه بازگشت ادمین بدون ارور Duplicate Handler
+# --------------- دکمه یکپارچه بازگشت پنل ادمین (FIXED) ---------------
 @bot.callback_query_handler(func=lambda c: c.data in ["admin_back", "adm_change_prices_back", "adm_fjoin_mgr_back", "adm_manage_learn_back"])
 def fixed_admin_back_handler(c):
     if c.from_user.id != ADMIN_ID: return
@@ -1121,7 +1122,7 @@ def fixed_admin_back_handler(c):
             text=f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users_count}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}",
             reply_markup=kb
         )
-    except Exception as e:
+    except Exception:
         admin_panel(c.message)
 
 # --------------- WEB ---------------
