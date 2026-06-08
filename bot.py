@@ -5,7 +5,9 @@ import os
 from datetime import datetime, timedelta
 from flask import Flask
 from threading import Thread
-import time 
+import time
+from bson.objectid import ObjectId
+from telebot.handler_backends import CancelUpdate
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8521801987
@@ -55,6 +57,11 @@ user_states = {}
 user_spam_history = {}
 user_muted_until = {}
 
+def get_state(uid):
+    """تابع کمکی برای جلوگیری از خطای متداول NoneType هنگام خواندن وضعیت کاربر"""
+    st = user_states.get(uid)
+    return st.get("state") if isinstance(st, dict) else None
+
 # --------------- UTILS ---------------
 
 def get_setting(key):
@@ -96,10 +103,10 @@ def is_member(user_id):
 # ----------------- ANTI SPAM MIDDLEWARE (FIXED) -----------------
 @bot.middleware_handler(update_types=['message', 'callback_query'])
 def anti_spam_middleware(bot_instance, update):
-    if update.message is not None:
-        uid = update.message.from_user.id
-    elif update.callback_query is not None:
-        uid = update.callback_query.from_user.id
+    if isinstance(update, types.Message):
+        uid = update.from_user.id
+    elif isinstance(update, types.CallbackQuery):
+        uid = update.from_user.id
     else:
         return
 
@@ -107,10 +114,10 @@ def anti_spam_middleware(bot_instance, update):
     
     if uid in user_muted_until:
         if curr_time < user_muted_until[uid]:
-            if update.callback_query:
-                try: bot.answer_callback_query(update.callback_query.id, "⚠️ شما به دلیل اسپم ۳۰ ثانیه مسدود شده‌اید!", show_alert=True)
+            if isinstance(update, types.CallbackQuery):
+                try: bot.answer_callback_query(update.id, "⚠️ شما به دلیل اسپم ۳۰ ثانیه مسدود شده‌اید!", show_alert=True)
                 except: pass
-            return telebot.handler_backends.CancelUpdate()
+            return CancelUpdate()
         else:
             del user_muted_until[uid]
             if uid in user_spam_history:
@@ -127,13 +134,13 @@ def anti_spam_middleware(bot_instance, update):
     
     if len(user_spam_history[uid]) > 4:
         user_muted_until[uid] = curr_time + 30
-        if update.message:
+        if isinstance(update, types.Message):
             try: bot.send_message(uid, "🚫 رگباری دکمه نزنید! شما به دلیل اسپم به مدت ۳۰ ثانیه مسدود شدید.")
             except: pass
-        elif update.callback_query:
-            try: bot.answer_callback_query(update.callback_query.id, "🚫 شما به دلیل اسپم به مدت ۳۰ ثانیه مسدود شدید.", show_alert=True)
+        elif isinstance(update, types.CallbackQuery):
+            try: bot.answer_callback_query(update.id, "🚫 شما به دلیل اسپم به مدت ۳۰ ثانیه مسدود شدید.", show_alert=True)
             except: pass
-        return telebot.handler_backends.CancelUpdate()
+        return CancelUpdate()
 
 # --------------- START & ADMIN COMMAND ---------------
 
@@ -258,7 +265,7 @@ def c2c(c):
     user_states[c.from_user.id] = {"state": "WAIT_AMOUNT"}
     bot.send_message(c.from_user.id, "💰 مبلغ (تومان) را وارد کنید:")
 
-@bot.message_handler(func=lambda m: user_states.get(m.from_user.id, {}).get("state") == "WAIT_AMOUNT")
+@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "WAIT_AMOUNT")
 def get_amount(m):
     txt = (m.text or "").strip()
     if not txt.isdigit():
@@ -268,9 +275,9 @@ def get_amount(m):
     user_states[m.from_user.id] = {"state": "WAIT_CARD", "amount": amt}
     bot.send_message(m.chat.id, "💳 شماره کارت مبدا را ارسال کنید:")
 
-@bot.message_handler(func=lambda m: user_states.get(m.from_user.id, {}).get("state") == "WAIT_CARD")
+@bot.message_handler(func=lambda m: get_state(m.from_user.id) == "WAIT_CARD")
 def get_card(m):
-    data = user_states.get(m.from_user.id, {})
+    data = user_states.get(m.from_user.id) or {}
     amt = data.get("amount", 0)
     expire_at = (datetime.now() + timedelta(minutes=30)).isoformat()
     user_states[m.from_user.id] = { "state": "WAIT_RECEIPT", "amount": amt, "card": m.text.strip(), "expire_at": expire_at }
@@ -284,13 +291,13 @@ def send_receipt(c):
 
 @bot.message_handler(content_types=['photo'])
 def receipt(m):
-    data = user_states.get(m.from_user.id)
-    if not data or data.get("state") != "WAIT_RECEIPT": return
+    data = user_states.get(m.from_user.id) or {}
+    if data.get("state") != "WAIT_RECEIPT": return
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ تایید", callback_data=f"ok_{m.from_user.id}_{data['amount']}"), types.InlineKeyboardButton("❌ رد", callback_data=f"no_{m.from_user.id}"))
-    bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=f"💰 درخواست شارژ\n\n👤 کاربر: {m.from_user.id}\n💵 مبلغ: {format_p(data['amount'])}\n💳 کارت مبدا: {data['card']}", reply_markup=kb)
+    bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=f"💰 درخواست شارژ\n\n👤 کاربر: {m.from_user.id}\n💵 مبلغ: {format_p(data['amount'])}\n💳 کارت مبدا: {data.get('card', 'نامشخص')}", reply_markup=kb)
     bot.send_message(m.chat.id, "✅ رسید برای ادمین ارسال شد، لطفاً منتظر بمانید 🙏")
-    user_states[m.from_user.id] = None
+    user_states.pop(m.from_user.id, None)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("ok_"))
 def ok(c):
@@ -494,17 +501,21 @@ def buy_wireguard(c):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("vol_"))
 def select_volume(c):
     uid = c.from_user.id
-    st = user_states.get(uid, {})
+    st = user_states.get(uid) or {}
     plan = st.get("plan")
-    volume = c.data.split("_")[1]
     
+    if not plan:
+        bot.answer_callback_query(c.id, "❌ مشکلی پیش آمد، لطفاً مجدداً تلاش کنید.", show_alert=True)
+        return
+        
+    volume = c.data.split("_")[1]
     db_p = get_db_prices(f"PRICES_{plan}")
     price = db_p.get(volume)
     
     user = users_col.find_one({"user_id": uid})
     balance = user['balance'] if user else 0
     if balance < price:
-        bot.answer_callback_query(c.id, "❌ابتدا حساب خود را شارژ کنید", show_alert=True); return
+        bot.answer_callback_query(c.id, "❌ ابتدا حساب خود را شارژ کنید", show_alert=True); return
     user_states[uid] = {"state":"CONFIRM_BUY","plan":plan,"volume":volume,"price":price}
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("✅ تایید", callback_data="final_buy"), types.InlineKeyboardButton("❌ لغو", callback_data="cancel_buy"))
@@ -513,14 +524,14 @@ def select_volume(c):
 @bot.callback_query_handler(func=lambda c: c.data == "cancel_buy")
 def cancel_buy(c):
     uid = c.from_user.id
-    user_states[uid] = None
+    user_states.pop(uid, None)
     try: bot.edit_message_text("👇 منوی اصلی:", c.message.chat.id, c.message.message_id, reply_markup=main_menu())
     except: bot.send_message(c.message.chat.id, "👇 منوی اصلی:", reply_markup=main_menu())
 
 @bot.callback_query_handler(func=lambda c: c.data == "final_buy")
 def final_buy(c):
     uid = c.from_user.id
-    data = user_states.get(uid, {})
+    data = user_states.get(uid) or {}
     if data.get("state") != "CONFIRM_BUY": return
     price = data["price"]
     users_col.update_one({"user_id": uid}, {"$inc": {"balance": -price, "configs_count": 1}})
@@ -530,7 +541,7 @@ def final_buy(c):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📤 ارسال کانفیگ", callback_data=f"sendcfg_{order_id}"))
     bot.send_message(ADMIN_ID, f"🛒 سفارش جدید\n\n🆔 OrderID: {order_id}\n👤 کاربر: {uid}\n📦 پلن: {data['plan']}\n📊 حجم: {data['volume']}\n💵 مبلغ: {format_p(price)}", reply_markup=kb)
-    user_states[uid] = None
+    user_states.pop(uid, None)
 
 # --------------- REFERRAL SYSTEM ---------------
 
@@ -557,7 +568,6 @@ def referral_panel(c):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("sendcfg_"))
 def start_send_config(c):
-    from bson.objectid import ObjectId
     if c.from_user.id != ADMIN_ID: return
     order_id_str = c.data.split("_")[1]
     order = orders_col.find_one({"_id": ObjectId(order_id_str)})
@@ -568,14 +578,14 @@ def start_send_config(c):
     user_states[ADMIN_ID] = {"state": "SEND_CONFIG", "order_id": order_id_str, "user_id": order['user_id']}
     bot.send_message(ADMIN_ID, "📤 کانفیگ رو ارسال کن (میتونی متن بفرستی یا فایل وایرگارد آپلود کنی):")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "SEND_CONFIG", content_types=['text', 'document', 'photo', 'video', 'audio'])
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "SEND_CONFIG", content_types=['text', 'document', 'photo', 'video', 'audio'])
 def send_config_to_user(m):
-    from bson.objectid import ObjectId
     if m.text == "/admin":
-        user_states[ADMIN_ID] = None
+        user_states.pop(ADMIN_ID, None)
         admin_panel(m); return
-    data = user_states.get(ADMIN_ID)
-    order_id = data["order_id"]; user_id = data["user_id"]
+    data = user_states.get(ADMIN_ID) or {}
+    order_id = data.get("order_id"); user_id = data.get("user_id")
+    if not order_id: return
     
     if m.content_type == 'text':
         bot.send_message(user_id, f"✅ کانفیگ شما:\n\n{m.text}")
@@ -588,7 +598,7 @@ def send_config_to_user(m):
         
     orders_col.update_one({"_id": ObjectId(order_id)}, {"$set": {"status": "done"}})
     bot.send_message(ADMIN_ID, f"✅ سفارش {order_id} با موفقیت در قالب رسانه مربوطه به خریدار تحویل داده شد.")
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
 
 # --------------- ACCOUNT ---------------
 
@@ -643,7 +653,7 @@ def adm_get_user(c):
     user_states[ADMIN_ID] = {"state":"ADM_GET_USER"}
     bot.send_message(ADMIN_ID, "آیدی عددی کاربر را ارسال کنید:")
 
-@bot.message_handler(func=lambda m: user_states.get(ADMIN_ID, {}).get("state") == "ADM_GET_USER" and m.from_user.id==ADMIN_ID)
+@bot.message_handler(func=lambda m: get_state(ADMIN_ID) == "ADM_GET_USER" and m.from_user.id==ADMIN_ID)
 def adm_show_user(m):
     if not m.text.isdigit(): bot.send_message(ADMIN_ID, "آیدی نامعتبر"); return
     uid = int(m.text)
@@ -659,7 +669,7 @@ def adm_show_user(m):
     kb.add(types.InlineKeyboardButton("📩 پیام خصوصی", callback_data=f"adm_pmsg_{uid}"))
     
     bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if is_banned else 'آزاد'}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_ban_"))
 def adm_ban_toggle(c):
@@ -707,18 +717,18 @@ def adm_pmsg_start(c):
     user_states[ADMIN_ID] = {"state": "ADM_SEND_PMSG", "target": uid}
     bot.send_message(ADMIN_ID, f"پیام خود را برای کاربر {uid} بنویسید:")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SEND_PMSG")
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "ADM_SEND_PMSG")
 def adm_pmsg_send(m):
     target = user_states[ADMIN_ID]["target"]
     try:
         bot.send_message(target, f"📩 پیام جدید از مدیریت:\n\n{m.text}")
         bot.send_message(ADMIN_ID, "✅ با موفقیت ارسال شد")
     except: bot.send_message(ADMIN_ID, "❌ ارسال ناموفق (شاید بلاک کرده)")
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
 
-@bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") in ["ADM_ADD","ADM_SUB"])
+@bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and get_state(ADMIN_ID) in ["ADM_ADD","ADM_SUB"])
 def adm_balance_edit(m):
-    st = user_states.get(ADMIN_ID, {})
+    st = user_states.get(ADMIN_ID) or {}
     if not m.text.isdigit(): bot.send_message(ADMIN_ID, "عدد بفرست"); return
     amt = int(m.text); uid = st["uid"]
     if st["state"] == "ADM_ADD":
@@ -727,7 +737,7 @@ def adm_balance_edit(m):
     else:
         users_col.update_one({"user_id": uid}, {"$inc": {"balance": -amt}})
         bot.send_message(uid, f"💰 {format_p(amt)} تومان از حسابت کسر شد (ادمین)")
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
     bot.send_message(ADMIN_ID, "انجام شد")
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_broadcast")
@@ -736,7 +746,7 @@ def adm_broadcast_start(c):
     user_states[ADMIN_ID] = {"state": "ADM_BC"}
     bot.send_message(ADMIN_ID, "✍️ متن پیام همگانی خود را ارسال کنید:")
 
-@bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_BC")
+@bot.message_handler(func=lambda m: m.from_user.id==ADMIN_ID and get_state(ADMIN_ID) == "ADM_BC")
 def do_broadcast(m):
     users = list(users_col.find({}, {"user_id": 1}))
     ok = 0
@@ -754,7 +764,7 @@ def do_broadcast(m):
         bot.send_message(ADMIN_ID, f"📢 ارسال همگانی به پایان رسید.\n✅ موفقیت آمیز: {ok} نفر")
         
     Thread(target=broadcast_thread).start()
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
 
 # --------------- مدیریت قیمت‌ها و حجم‌ها توسط ادمین ---------------
 
@@ -791,7 +801,7 @@ def FIXED_adm_addp_start(c):
     user_states[ADMIN_ID] = {"state": "FIXED_ADD_VOLUME_NAME", "plan": plan}
     bot.send_message(ADMIN_ID, f"نام حجم جدید برای پلن {plan} را وارد کنید (مثلا: 10G یا 50G):")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "FIXED_ADD_VOLUME_NAME", content_types=['text'])
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "FIXED_ADD_VOLUME_NAME", content_types=['text'])
 def FIXED_adm_addp_save_name(m):
     vol_name = m.text.strip().upper()
     plan = user_states[ADMIN_ID]["plan"]
@@ -809,7 +819,6 @@ def FIXED_adm_delp_val(c):
     settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
     bot.answer_callback_query(c.id, f"حجم {vol} با موفقیت حذف شد", show_alert=True)
     
-    # تصحیح ریدایرکت برای جلوگیری از خطای تلگرام
     c.data = f"setp_{plan}"
     FIXED_adm_setp_plan(c)
 
@@ -820,7 +829,7 @@ def FIXED_adm_editp_val(c):
     user_states[ADMIN_ID] = {"state": "FIXED_SETTING_PRICE", "plan": plan, "vol": vol}
     bot.send_message(ADMIN_ID, f"قیمت جدید برای {plan} {vol} را به عدد (تومان) وارد کنید:")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "FIXED_SETTING_PRICE", content_types=['text'])
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "FIXED_SETTING_PRICE", content_types=['text'])
 def FIXED_save_new_price(m):
     if not m.text.isdigit(): 
         bot.send_message(ADMIN_ID, "❌ فقط عدد انگلیسی بدون فاصله یا کاما بفرستید:")
@@ -834,7 +843,7 @@ def FIXED_save_new_price(m):
     settings_col.update_one({"key": p_key}, {"$set": {"value": current_prices}})
     
     bot.send_message(ADMIN_ID, f"✅ تنظیمات در دیتابیس ذخیره شد.\n{data['plan']} حجم {data['vol']} به قیمت {format_p(new_p)} تومان تغییر یافت.")
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
 
 # --------------- بخش مدیریت عضویت اجباری ---------------
 
@@ -873,7 +882,7 @@ def fjadd_start(c):
     user_states[ADMIN_ID] = {"state": "FJ_WAIT_ID", "type": target_type}
     bot.send_message(ADMIN_ID, f"لطفاً آیدی {target_type} جدید را با @ ارسال کنید:\nمثال: @my_channel")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "FJ_WAIT_ID")
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "FJ_WAIT_ID")
 def fjadd_save(m):
     chat_id = m.text.strip()
     if not chat_id.startswith("@"):
@@ -882,11 +891,10 @@ def fjadd_save(m):
     target_type = user_states[ADMIN_ID]["type"]
     fjoin_col.insert_one({"type": target_type, "chat_id": chat_id})
     bot.send_message(ADMIN_ID, f"✅ {chat_id} به لیست {target_type}ها اضافه شد.")
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("fjdel_"))
 def fjdel_confirm(c):
-    from bson.objectid import ObjectId
     item_id = c.data.split("_")[1]
     fjoin_col.delete_one({"_id": ObjectId(item_id)})
     bot.answer_callback_query(c.id, "✅ با موفقیت حذف شد", show_alert=True)
@@ -906,12 +914,12 @@ def adm_update_servers(c):
     user_states[ADMIN_ID] = {"state": "WAIT_SERVER_STATUS_TEXT"}
     bot.send_message(ADMIN_ID, "✍️ متن جدید وضعیت سرورها را بنویسید (مثلا: نپستر متصل 🔥 | وایرگارد عالی 🟢):")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_SERVER_STATUS_TEXT")
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "WAIT_SERVER_STATUS_TEXT")
 def save_server_status_text(m):
     txt = m.text.strip()
     settings_col.update_one({"key": "global_server_status"}, {"$set": {"value": txt}}, upsert=True)
     bot.send_message(ADMIN_ID, "✅ وضعیت جدید سرورها با موفقیت در دیتابیس ذخیره شد.")
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
 
 @bot.callback_query_handler(func=lambda c: c.data == "view_announcements")
 def view_announcements(c):
@@ -925,10 +933,10 @@ def adm_smart_announcement(c):
     user_states[ADMIN_ID] = {"state": "WAIT_SMART_ANN"}
     bot.send_message(ADMIN_ID, "📢 متن اطلاعیه هوشمند را بنویسید. این پیام برای همه ارسال شده و پس از ۱ دقیقه به طور خودکار پاک می‌شود:")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_SMART_ANN")
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "WAIT_SMART_ANN")
 def do_smart_announcement(m):
     ann_text = m.text.strip()
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
     
     settings_col.update_one({"key": "announcements_archive"}, {"$set": {"value": f"⏱ [{now_str()}]\n📢 {ann_text}"}}, upsert=True)
     users = list(users_col.find({}, {"user_id": 1}))
@@ -1079,10 +1087,10 @@ def adm_edit_os_start(c):
     user_states[ADMIN_ID] = {"state": "WAIT_OS_LEARN_DATA", "os": target_os}
     bot.send_message(ADMIN_ID, f"📥 آموزش جدید برای سیستم عامل [{target_os}] را بفرستید.\nشما می‌توانید متن خالی بفرستید، عکس آپلود کنید و یا فایل نصبی برنامه را بفرستید تا ذخیره شود:")
 
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "WAIT_OS_LEARN_DATA", content_types=['text', 'photo', 'document', 'video'])
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and get_state(ADMIN_ID) == "WAIT_OS_LEARN_DATA", content_types=['text', 'photo', 'document', 'video'])
 def adm_edit_os_save(m):
     target_os = user_states[ADMIN_ID]["os"]
-    user_states[ADMIN_ID] = None
+    user_states.pop(ADMIN_ID, None)
     
     if m.content_type == 'text':
         db_val = m.text.strip()
