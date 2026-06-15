@@ -97,12 +97,12 @@ def main_menu():
     )
     # دکمه اکانت تست - فقط اگه فعال باشه نمایش داده میشه
     if get_setting('test_status'):
-        kb.add(types.InlineKeyboardButton("🎁 اکانت تست", callback_data="test_account", style="primary"))
+        kb.add(types.InlineKeyboardButton("🎁 اکانت تست", callback_data="test_account", style="success"))
     return kb
 
 def back_kb():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     return kb
 
 
@@ -235,7 +235,7 @@ def adm_settings(c):
     kb.add(types.InlineKeyboardButton(f"افزایش موجودی: {c_status}", callback_data="tog_charge_status", style="primary"))
     kb.add(types.InlineKeyboardButton(f"سیستم دعوت: {r_status}", callback_data="tog_ref_status", style="primary"))
     kb.add(types.InlineKeyboardButton(f"اکانت تست: {t_status}", callback_data="tog_test_status", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back", style="danger"))
     bot.edit_message_text("⚙️ مدیریت وضعیت خدمات:\n(با کلیک روی هر دکمه وضعیت آن عوض می‌شود)", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tog_"))
@@ -260,7 +260,7 @@ def charge(c):
         return
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("💳 کارت به کارت", callback_data="c2c", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     bot.edit_message_text("روش پرداخت:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "c2c")
@@ -392,14 +392,14 @@ def price_menu(c):
         kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="price_napsterv_unlim", style="primary"))
     if get_setting('sale_wireguard'):
         kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="price_wireguard", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     bot.edit_message_text("📊 تعرفه خدمات باز:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_month")
 def price_month(c):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="show_month_prices", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="danger"))
     bot.edit_message_text("۱ ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "show_month_prices")
@@ -410,14 +410,14 @@ def show_month_prices(c):
         txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_month", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_month", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_month", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_vip")
 def price_vip(c):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("♾ بدون محدودیت کاربری", callback_data="show_vip_prices", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="danger"))
     bot.edit_message_text("VIP:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "show_vip_prices")
@@ -428,7 +428,7 @@ def show_vip_prices(c):
         txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_vip", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_vip", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_vip", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_napsterv")
@@ -439,7 +439,7 @@ def price_napsterv(c):
         txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_napsterv", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_napsterv_unlim")
@@ -450,7 +450,7 @@ def price_napsterv_unlim(c):
         txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_napsterv_unlim", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_wireguard")
@@ -461,7 +461,7 @@ def price_wireguard(c):
         txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_wireguard", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 # دکمه‌های خرید مستقیم از صفحه تعرفه
@@ -473,7 +473,7 @@ def goto_buy_month(c):
     p = get_db_prices("PRICES_MONTH")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="show_month_prices", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="show_month_prices", style="danger"))
     bot.edit_message_text("حجم ۱ ماهه را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "goto_buy_vip")
@@ -484,7 +484,7 @@ def goto_buy_vip(c):
     p = get_db_prices("PRICES_VIP")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="show_vip_prices", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="show_vip_prices", style="danger"))
     bot.edit_message_text("حجم VIP را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "goto_buy_napsterv")
@@ -495,7 +495,7 @@ def goto_buy_napsterv(c):
     p = get_db_prices("PRICES_NAPSTERV")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_napsterv", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_napsterv", style="danger"))
     bot.edit_message_text("حجم سرور نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "goto_buy_napsterv_unlim")
@@ -506,7 +506,7 @@ def goto_buy_napsterv_unlim(c):
     p = get_db_prices("PRICES_NAPSTERV_UNLIM")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_napsterv_unlim", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_napsterv_unlim", style="danger"))
     bot.edit_message_text("حجم سرور نامحدود نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "goto_buy_wireguard")
@@ -517,7 +517,7 @@ def goto_buy_wireguard(c):
     p = get_db_prices("PRICES_WIREGUARD")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_wireguard", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_wireguard", style="danger"))
     bot.edit_message_text("حجم سرور وایرگارد را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 # --------------- BUY ---------------
@@ -535,7 +535,7 @@ def buy(c):
         kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="buy_napsterv_unlim", style="primary"))
     if get_setting('sale_wireguard'):
         kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="buy_wireguard", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     bot.edit_message_text("🛒 خرید سرویس:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_month")
@@ -545,7 +545,7 @@ def buy_month(c):
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"MONTH"}
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="buy_month_single", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="danger"))
     bot.edit_message_text("۱ ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_month_single")
@@ -553,7 +553,7 @@ def buy_month_single(c):
     p = get_db_prices("PRICES_MONTH")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_month", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_month", style="danger"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_vip")
@@ -563,7 +563,7 @@ def buy_vip(c):
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"VIP"}
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("♾ بدون محدودیت کاربری", callback_data="buy_vip_unlim", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="danger"))
     bot.edit_message_text("VIP:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_vip_unlim")
@@ -571,7 +571,7 @@ def buy_vip_unlim(c):
     p = get_db_prices("PRICES_VIP")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_vip", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_vip", style="danger"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_napsterv")
@@ -582,7 +582,7 @@ def buy_napsterv(c):
     p = get_db_prices("PRICES_NAPSTERV")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="danger"))
     bot.edit_message_text("حجم سرور نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_napsterv_unlim")
@@ -593,7 +593,7 @@ def buy_napsterv_unlim(c):
     p = get_db_prices("PRICES_NAPSTERV_UNLIM")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="danger"))
     bot.edit_message_text("حجم سرور نامحدود نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_wireguard")
@@ -604,7 +604,7 @@ def buy_wireguard(c):
     p = get_db_prices("PRICES_WIREGUARD")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="danger"))
     bot.edit_message_text("حجم سرور وایرگارد را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("vol_"))
@@ -726,7 +726,7 @@ def support(c):
     except: pass
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("💬 ارتباط با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@', '')}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     bot.edit_message_text("📞 برای ارتباط با پشتیبانی روی دکمه زیر کلیک کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 # --------------- BACK ---------------
@@ -860,7 +860,7 @@ def adm_change_prices(c):
     kb.add(types.InlineKeyboardButton("🔮 قیمت نپستر", callback_data="FIXEDsetp_NAPSTERV", style="primary"),
            types.InlineKeyboardButton("🌀 قیمت نپستر نامحدود", callback_data="FIXEDsetp_NAPSTERV_UNLIM", style="primary"))
     kb.add(types.InlineKeyboardButton("🔴 قیمت وایرگارد", callback_data="FIXEDsetp_WIREGUARD", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("FIXEDsetp_"))
@@ -874,7 +874,7 @@ def FIXED_adm_setp_plan(c):
             types.InlineKeyboardButton(f"❌ حذف حجم {v}", callback_data=f"FIXEDdel_{plan}:::{v}", style="primary")
         )
     kb.add(types.InlineKeyboardButton("➕ افزودن حجم جدید به این سرویس", callback_data=f"FIXEDadd_{plan}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_change_prices", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_change_prices", style="danger"))
     bot.edit_message_text(f"لیست حجم‌های فعلی پلن {plan}:\nجهت تغییر قیمت یا حذف انتخاب کنید یا حجم جدید بسازید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("FIXEDadd_"))
@@ -931,7 +931,7 @@ def adm_fjoin_mgr(c):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📢 مدیریت کانال‌ها", callback_data="fjm_channel", style="primary"),
            types.InlineKeyboardButton("👥 مدیریت گروه‌ها", callback_data="fjm_group", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text("🛡 بخش مدیریت عضویت اجباری:\nیکی از موارد زیر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("fjm_"))
@@ -948,7 +948,7 @@ def fjm_list(c):
             txt += f"🔹 {item['chat_id']}\n"
             kb.add(types.InlineKeyboardButton(f"❌ حذف {item['chat_id']}", callback_data=f"fjdel_{item['_id']}", style="primary"))
     kb.add(types.InlineKeyboardButton(f"➕ افزودن {label} جدید", callback_data=f"fjadd_{target_type}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_fjoin_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_fjoin_mgr", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("fjadd_"))
@@ -1062,7 +1062,7 @@ def server_status(c):
     status_text = res['value'] if res else "وضعیت سرورها در دسترس نیست."
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("🔄 بروزرسانی", callback_data="server_status", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     bot.edit_message_text(f"🖥 وضعیت سرورها:\n\n{status_text}", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_server_status")
@@ -1072,7 +1072,7 @@ def adm_server_status(c):
     current = res['value'] if res else ""
     user_states[ADMIN_ID] = {"state": "ADM_SET_SERVER_STATUS"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text(f"🖥 وضعیت فعلی سرورها:\n\n{current}\n\n✏️ متن جدید را ارسال کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SET_SERVER_STATUS")
@@ -1097,7 +1097,7 @@ def adm_smart_announce(c):
     if c.from_user.id != ADMIN_ID: return
     user_states[ADMIN_ID] = {"state": "ADM_SMART_ANNOUNCE"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text("📢 اطلاعیه هوشمند:\n\nمتن اطلاعیه را ارسال کنید.\nپیام پس از ۶۰ ثانیه از چت کاربران حذف خواهد شد و در تاریخچه ذخیره می‌شود.", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SMART_ANNOUNCE")
@@ -1145,7 +1145,7 @@ def price_vip_exclusive(c):
     txt = "💎 سرور اختصاصی VIP\n\nبرای دریافت اطلاعات سرور اختصاصی VIP با پشتیبانی تماس بگیرید."
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📞 تماس با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@','')}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 # ==================== ویژگی ۵: آمار کاربران فعال ====================
@@ -1165,7 +1165,7 @@ def adm_active_stats(c):
     kb.add(types.InlineKeyboardButton(f"📆 هفته گذشته: {week_count} نفر", callback_data="adm_active_stats", style="primary"))
     kb.add(types.InlineKeyboardButton(f"🗓 ماه گذشته: {month_count} نفر", callback_data="adm_active_stats", style="primary"))
     kb.add(types.InlineKeyboardButton(f"👥 کل کاربران: {total_count} نفر", callback_data="adm_active_stats", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text(
         f"📊 آمار کاربران فعال:\n\n"
         f"📅 امروز: {today_count} نفر\n"
@@ -1186,7 +1186,7 @@ def tutorial_menu(c):
     kb = types.InlineKeyboardMarkup()
     for item in items:
         kb.add(types.InlineKeyboardButton(item['label'], callback_data=f"tut_os_{item['os']}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     bot.edit_message_text("📚 آموزش اتصال\n\nسیستم‌عامل خود را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_os_"))
@@ -1199,7 +1199,7 @@ def tutorial_os_servers(c):
     kb.add(types.InlineKeyboardButton("🔵 سرور V2ray", callback_data=f"tut_show_{os_key}_v2ray", style="primary"))
     kb.add(types.InlineKeyboardButton("🟣 سرور Npv", callback_data=f"tut_show_{os_key}_npv", style="primary"))
     kb.add(types.InlineKeyboardButton("🔴 سرور Wireguard", callback_data=f"tut_show_{os_key}_wireguard", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="tutorial", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="tutorial", style="danger"))
     bot.edit_message_text(f"📚 آموزش {item['label']}\n\nنوع سرور را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_show_"))
@@ -1215,7 +1215,7 @@ def show_tutorial_content_v2(c):
     srv_label = {"v2ray": "🔵 V2ray", "npv": "🟣 Npv", "wireguard": "🔴 Wireguard"}.get(srv_type, srv_type)
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"tut_os_{os_key}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"tut_os_{os_key}", style="danger"))
     header = f"📚 آموزش {os_label} - {srv_label}\n\n"
 
     if not content_data or not content_data.get('value'):
@@ -1243,7 +1243,7 @@ def show_tutorial_content_v2(c):
 
 def send_multi_content(user_id, items, header, back_cb):
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=back_cb, style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=back_cb, style="danger"))
     for i, item in enumerate(items):
         t = item.get("type", "text")
         content = item.get("content", "")
@@ -1274,7 +1274,7 @@ def adm_tutorial_mgr(c):
             types.InlineKeyboardButton(f"✏️ {item['label']}", callback_data=f"tut_adm_manage_{item['os']}", style="primary"),
             types.InlineKeyboardButton(f"🗑 حذف {item['label']}", callback_data=f"tut_adm_del_os_{item['os']}", style="primary")
         )
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text("📚 مدیریت آموزش اتصال:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_adm_del_os_"))
@@ -1300,7 +1300,7 @@ def tut_adm_manage_os(c):
     kb.add(types.InlineKeyboardButton("🔵 ثبت آموزش V2ray", callback_data=f"tut_adm_set_{os_key}_v2ray", style="primary"))
     kb.add(types.InlineKeyboardButton("🟣 ثبت آموزش Npv", callback_data=f"tut_adm_set_{os_key}_npv", style="primary"))
     kb.add(types.InlineKeyboardButton("🔴 ثبت آموزش Wireguard", callback_data=f"tut_adm_set_{os_key}_wireguard", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_tutorial_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_tutorial_mgr", style="danger"))
     bot.edit_message_text(f"📚 مدیریت آموزش‌های {item['label']}:\nکدام سرور را ویرایش می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_adm_set_"))
@@ -1437,7 +1437,7 @@ def test_account_menu(c):
             url = f"https://t.me/{item['chat_id'].replace('@','')}"
             kb.add(types.InlineKeyboardButton(label, url=url))
         kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="test_check_join", style="primary"))
-        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
         bot.edit_message_text("⚠️ برای دریافت اکانت تست، ابتدا باید عضو کانال و گروه ما باشید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
         return
 
@@ -1459,7 +1459,7 @@ def test_account_menu(c):
             kb.add(types.InlineKeyboardButton(f"✅ {btn_label} (قبلاً دریافت شد)", callback_data=f"test_already_{btn_key}", style="primary"))
         else:
             kb.add(types.InlineKeyboardButton(f"🎁 {btn_label}", callback_data=f"test_get_{btn_key}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="danger"))
     bot.edit_message_text("🎁 اکانت تست\n\nنوع سرور تست را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "test_check_join")
@@ -1545,7 +1545,7 @@ def adm_test_mgr(c):
             callback_data=f"adm_test_detail_{btn_key}"
         , style="primary"))
 
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text(
         "🎁 مدیریت اکانت تست\n\nوضعیت هر نوع تست را مشاهده و مدیریت کنید:",
         c.message.chat.id, c.message.message_id, reply_markup=kb
@@ -1606,7 +1606,7 @@ def adm_test_detail(c):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("➕ افزودن اکانت‌های تست", callback_data=f"adm_test_add_acc_{btn_key}", style="primary"))
     kb.add(types.InlineKeyboardButton("🗑 حذف این نوع تست", callback_data=f"adm_test_del_btn_{btn_key}", style="primary"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_test_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_test_mgr", style="danger"))
 
     bot.edit_message_text(
         f"📦 مدیریت تست: {btn_label}\n\n"
@@ -1693,7 +1693,7 @@ def adm_buyers_report(c):
         count = orders_col.count_documents({"plan": plan_key, "status": "done"})
         kb.add(types.InlineKeyboardButton(f"{label} ({count} خرید)", callback_data=f"adm_buyers_{plan_key}", style="primary"))
 
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="danger"))
     bot.edit_message_text("📋 گزارش خریداران\n\nروی هر سرور کلیک کنید تا خریداران آن را ببینید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_buyers_") and not c.data.startswith("adm_buyers_report"))
@@ -1716,7 +1716,7 @@ def adm_buyers_plan(c):
             bot.send_message(ADMIN_ID, part)
     else:
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_buyers_report", style="primary"))
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_buyers_report", style="danger"))
         bot.send_message(ADMIN_ID, txt, reply_markup=kb)
 
 # =====================================================================
