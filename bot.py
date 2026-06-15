@@ -1456,7 +1456,7 @@ def test_account_menu(c):
         # بررسی اگه کاربر این نوع تست رو قبلاً گرفته
         already_used = test_used_col.find_one({"user_id": uid, "test_key": btn_key})
         if already_used:
-            kb.add(types.InlineKeyboardButton(f"✅ {btn_label} (قبلاً دریافت شد, style="primary")", callback_data=f"test_already_{btn_key}"))
+            kb.add(types.InlineKeyboardButton(f"✅ {btn_label} (قبلاً دریافت شد)", callback_data=f"test_already_{btn_key}", style="primary"))
         else:
             kb.add(types.InlineKeyboardButton(f"🎁 {btn_label}", callback_data=f"test_get_{btn_key}", style="primary"))
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
@@ -1691,7 +1691,7 @@ def adm_buyers_report(c):
     ]
     for label, plan_key in server_list:
         count = orders_col.count_documents({"plan": plan_key, "status": "done"})
-        kb.add(types.InlineKeyboardButton(f"{label} ({count} خرید, style="primary")", callback_data=f"adm_buyers_{plan_key}"))
+        kb.add(types.InlineKeyboardButton(f"{label} ({count} خرید)", callback_data=f"adm_buyers_{plan_key}", style="primary"))
 
     kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
     bot.edit_message_text("📋 گزارش خریداران\n\nروی هر سرور کلیک کنید تا خریداران آن را ببینید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
