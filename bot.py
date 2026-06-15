@@ -25,14 +25,20 @@ users_col = db['users']
 orders_col = db['orders']
 settings_col = db['settings']
 fjoin_col = db['force_join']
+test_accounts_col = db['test_accounts']      # مخزن اکانت‌های تست
+test_used_col = db['test_used']              # ثبت کاربرانی که تست گرفتن
 
-for s in ['sale_month', 'sale_vip', 'sale_napsterv', 'sale_napsterv_unlim', 'sale_wireguard', 'charge_status', 'ref_status']:
+for s in ['sale_month', 'sale_vip', 'sale_napsterv', 'sale_napsterv_unlim', 'sale_wireguard', 'charge_status', 'ref_status', 'test_status']:
     if not settings_col.find_one({"key": s}):
         settings_col.insert_one({"key": s, "value": 1})
 
 if fjoin_col.count_documents({}) == 0:
     fjoin_col.insert_one({"type": "channel", "chat_id": CHANNEL_ID})
     fjoin_col.insert_one({"type": "group", "chat_id": GROUP_ID})
+
+# مقداردهی اولیه دکمه‌های تست (اگه نبود)
+if not settings_col.find_one({"key": "test_buttons"}):
+    settings_col.insert_one({"key": "test_buttons", "value": []})
 
 default_prices = {
     "PRICES_MONTH": {"1G":350000,"2G":699000,"3G":999000,"5G":1499000},
@@ -67,17 +73,38 @@ def now_str():
 
 def main_menu():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🛒 خرید سرور", callback_data="buy"), types.InlineKeyboardButton("📊 تعرفه", callback_data="price"))
-    kb.add(types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge"), types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account"))
-    kb.add(types.InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="referral"), types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support"))
-    kb.add(types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="server_status"), types.InlineKeyboardButton("📢 اطلاعیه‌ها", callback_data="announcements"))
-    kb.add(types.InlineKeyboardButton("📚 آموزش اتصال", callback_data="tutorial"))
+    # ردیف اول: خرید سرور عریض
+    kb.add(types.InlineKeyboardButton("🛒 خرید سرور", callback_data="buy", style="primary"))
+    # ردیف دوم
+    kb.add(
+        types.InlineKeyboardButton("📊 تعرفه", callback_data="price", style="primary"),
+        types.InlineKeyboardButton("👤 حساب کاربری", callback_data="account", style="primary")
+    )
+    # ردیف سوم
+    kb.add(
+        types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="charge", style="primary"),
+        types.InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="referral", style="primary")
+    )
+    # ردیف چهارم
+    kb.add(
+        types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="server_status", style="primary"),
+        types.InlineKeyboardButton("📢 اطلاعیه‌ها", callback_data="announcements", style="primary")
+    )
+    # ردیف پنجم
+    kb.add(
+        types.InlineKeyboardButton("📚 آموزش اتصال", callback_data="tutorial", style="primary"),
+        types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support", style="primary")
+    )
+    # دکمه اکانت تست - فقط اگه فعال باشه نمایش داده میشه
+    if get_setting('test_status'):
+        kb.add(types.InlineKeyboardButton("🎁 اکانت تست", callback_data="test_account", style="primary"))
     return kb
 
 def back_kb():
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
     return kb
+
 
 def is_member(user_id):
     items = list(fjoin_col.find({}))
@@ -132,7 +159,7 @@ def start(m):
             label = "📢 کانال" if item['type'] == "channel" else "👥 گروه"
             url = f"https://t.me/{item['chat_id'].replace('@','')}"
             kb.add(types.InlineKeyboardButton(label, url=url))
-        kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join"))
+        kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="check_join", style="primary"))
         bot.send_message(uid, "برای استفاده ابتدا عضو موارد زیر شوید:", reply_markup=kb)
         return
     bot.send_message(uid, "👇 منوی اصلی:", reply_markup=main_menu())
@@ -145,35 +172,38 @@ def admin_panel(m):
     total = total_balance[0]['total'] if total_balance else 0
     pending = orders_col.count_documents({"status": "pending"})
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📦 سفارشات باز", callback_data="adm_orders"))
-    kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user"))
-    kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast"))
-    kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings"))
-    kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices"))
-    kb.add(types.InlineKeyboardButton("🛡 مدیریت عضویت", callback_data="adm_fjoin_mgr"))
-    kb.add(types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="adm_server_status"))
-    kb.add(types.InlineKeyboardButton("📢 اطلاعیه هوشمند", callback_data="adm_smart_announce"))
-    kb.add(types.InlineKeyboardButton("📊 آمار کاربران فعال", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton("📚 مدیریت آموزش اتصال", callback_data="adm_tutorial_mgr"))
+    kb.add(types.InlineKeyboardButton("📦 سفارشات باز", callback_data="adm_orders", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user", style="primary"))
+    kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast", style="primary"))
+    kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings", style="primary"))
+    kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices", style="primary"))
+    kb.add(types.InlineKeyboardButton("🛡 مدیریت عضویت", callback_data="adm_fjoin_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="adm_server_status", style="primary"))
+    kb.add(types.InlineKeyboardButton("📢 اطلاعیه هوشمند", callback_data="adm_smart_announce", style="primary"))
+    kb.add(types.InlineKeyboardButton("📊 آمار کاربران فعال", callback_data="adm_active_stats", style="primary"))
+    kb.add(types.InlineKeyboardButton("📚 مدیریت آموزش اتصال", callback_data="adm_tutorial_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("🎁 مدیریت اکانت تست", callback_data="adm_test_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("📋 گزارش خریداران", callback_data="adm_buyers_report", style="primary"))
     bot.send_message(m.chat.id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users_count}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
 
-# تابع کمکی برای نمایش پنل ادمین از طریق callback
 def show_admin_panel(chat_id):
     users_count = users_col.count_documents({})
     total_balance = list(users_col.aggregate([{"$group": {"_id": None, "total": {"$sum": "$balance"}}}]))
     total = total_balance[0]['total'] if total_balance else 0
     pending = orders_col.count_documents({"status": "pending"})
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📦 سفارشات باز", callback_data="adm_orders"))
-    kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user"))
-    kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast"))
-    kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings"))
-    kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices"))
-    kb.add(types.InlineKeyboardButton("🛡 مدیریت عضویت", callback_data="adm_fjoin_mgr"))
-    kb.add(types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="adm_server_status"))
-    kb.add(types.InlineKeyboardButton("📢 اطلاعیه هوشمند", callback_data="adm_smart_announce"))
-    kb.add(types.InlineKeyboardButton("📊 آمار کاربران فعال", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton("📚 مدیریت آموزش اتصال", callback_data="adm_tutorial_mgr"))
+    kb.add(types.InlineKeyboardButton("📦 سفارشات باز", callback_data="adm_orders", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔎 مشاهده کاربر", callback_data="adm_get_user", style="primary"))
+    kb.add(types.InlineKeyboardButton("📣 ارسال همگانی", callback_data="adm_broadcast", style="primary"))
+    kb.add(types.InlineKeyboardButton("⚙️ مدیریت فروش", callback_data="adm_settings", style="primary"))
+    kb.add(types.InlineKeyboardButton("💰 تغییر قیمت‌ها", callback_data="adm_change_prices", style="primary"))
+    kb.add(types.InlineKeyboardButton("🛡 مدیریت عضویت", callback_data="adm_fjoin_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("🖥 وضعیت سرورها", callback_data="adm_server_status", style="primary"))
+    kb.add(types.InlineKeyboardButton("📢 اطلاعیه هوشمند", callback_data="adm_smart_announce", style="primary"))
+    kb.add(types.InlineKeyboardButton("📊 آمار کاربران فعال", callback_data="adm_active_stats", style="primary"))
+    kb.add(types.InlineKeyboardButton("📚 مدیریت آموزش اتصال", callback_data="adm_tutorial_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("🎁 مدیریت اکانت تست", callback_data="adm_test_mgr", style="primary"))
+    kb.add(types.InlineKeyboardButton("📋 گزارش خریداران", callback_data="adm_buyers_report", style="primary"))
     bot.send_message(chat_id, f"👑 پنل ادمین \n\n👤 تعداد کاربران: {users_count}\n💰 مجموع موجودی: {format_p(total)}\n📦 سفارشات باز: {pending}", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "check_join")
@@ -194,16 +224,18 @@ def adm_settings(c):
     wg_status = "✅ باز" if get_setting('sale_wireguard') else "❌ بسته"
     c_status = "✅ باز" if get_setting('charge_status') else "❌ بسته"
     r_status = "✅ باز" if get_setting('ref_status') else "❌ بسته"
+    t_status = "✅ باز" if get_setting('test_status') else "❌ بسته"
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(f"فروش ۱ ماهه: {m_status}", callback_data="tog_sale_month"))
-    kb.add(types.InlineKeyboardButton(f"فروش VIP: {v_status}", callback_data="tog_sale_vip"))
-    kb.add(types.InlineKeyboardButton(f"سرور نپستر: {nv_status}", callback_data="tog_sale_napsterv"))
-    kb.add(types.InlineKeyboardButton(f"سرور نامحدود نپستر: {nvu_status}", callback_data="tog_sale_napsterv_unlim"))
-    kb.add(types.InlineKeyboardButton(f"سرور وایرگارد: {wg_status}", callback_data="tog_sale_wireguard"))
-    kb.add(types.InlineKeyboardButton(f"افزایش موجودی: {c_status}", callback_data="tog_charge_status"))
-    kb.add(types.InlineKeyboardButton(f"سیستم دعوت: {r_status}", callback_data="tog_ref_status"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back"))
+    kb.add(types.InlineKeyboardButton(f"فروش ۱ ماهه: {m_status}", callback_data="tog_sale_month", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"فروش VIP: {v_status}", callback_data="tog_sale_vip", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"سرور نپستر: {nv_status}", callback_data="tog_sale_napsterv", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"سرور نامحدود نپستر: {nvu_status}", callback_data="tog_sale_napsterv_unlim", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"سرور وایرگارد: {wg_status}", callback_data="tog_sale_wireguard", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"افزایش موجودی: {c_status}", callback_data="tog_charge_status", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"سیستم دعوت: {r_status}", callback_data="tog_ref_status", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"اکانت تست: {t_status}", callback_data="tog_test_status", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت به پنل", callback_data="admin_back", style="primary"))
     bot.edit_message_text("⚙️ مدیریت وضعیت خدمات:\n(با کلیک روی هر دکمه وضعیت آن عوض می‌شود)", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tog_"))
@@ -214,7 +246,6 @@ def toggle_settings(c):
     settings_col.update_one({"key": key}, {"$set": {"value": 0 if current else 1}})
     adm_settings(c)
 
-# FIX: دکمه بازگشت پنل ادمین - حالا پیام جدید می‌فرسته
 @bot.callback_query_handler(func=lambda c: c.data == "admin_back")
 def admin_back(c):
     if c.from_user.id != ADMIN_ID: return
@@ -228,8 +259,8 @@ def charge(c):
         bot.answer_callback_query(c.id, "⚠️ در حال حاضر بخش افزایش موجودی موقتاً بسته است.", show_alert=True)
         return
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("💳 کارت به کارت", callback_data="c2c"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+    kb.add(types.InlineKeyboardButton("💳 کارت به کارت", callback_data="c2c", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
     bot.edit_message_text("روش پرداخت:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "c2c")
@@ -254,7 +285,7 @@ def get_card(m):
     expire_at = (datetime.now() + timedelta(minutes=30)).isoformat()
     user_states[m.from_user.id] = {"state": "WAIT_RECEIPT", "amount": amt, "card": m.text.strip(), "expire_at": expire_at}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📸 ارسال رسید", callback_data="send_receipt"))
+    kb.add(types.InlineKeyboardButton("📸 ارسال رسید", callback_data="send_receipt", style="primary"))
     bot.send_message(m.chat.id, f"✅ اطلاعات ثبت شد\n\n💰 مبلغ: {format_p(amt)} تومان\n💳 کارت مقصد:\n6221061233705260\n👤 به نام: افراس\n\n⚠️ مبلغ را واریز کرده و رسید را ارسال کنید\n\n⏰ فاکتور تا ۳۰ دقیقه معتبر است", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "send_receipt")
@@ -265,7 +296,6 @@ def send_receipt(c):
 def receipt(m):
     data = user_states.get(m.from_user.id)
     if not data or data.get("state") != "WAIT_RECEIPT": return
-    # ذخیره order_id در دیتابیس برای جلوگیری از تایید/رد چندباره
     order_res = orders_col.insert_one({
         "user_id": m.from_user.id,
         "type": "charge",
@@ -278,8 +308,8 @@ def receipt(m):
 
     kb = types.InlineKeyboardMarkup()
     kb.add(
-        types.InlineKeyboardButton("✅ تایید", callback_data=f"ok_{m.from_user.id}_{data['amount']}_{charge_order_id}"),
-        types.InlineKeyboardButton("❌ رد", callback_data=f"no_{m.from_user.id}_{charge_order_id}")
+        types.InlineKeyboardButton("✅ تایید", callback_data=f"ok_{m.from_user.id}_{data['amount']}_{charge_order_id}", style="primary"),
+        types.InlineKeyboardButton("❌ رد", callback_data=f"no_{m.from_user.id}_{charge_order_id}", style="primary")
     )
     bot.send_photo(ADMIN_ID, m.photo[-1].file_id,
         caption=f"💰 درخواست شارژ\n\n👤 کاربر: {m.from_user.id}\n💵 مبلغ: {format_p(data['amount'])}\n💳 کارت مبدا: {data['card']}",
@@ -287,7 +317,6 @@ def receipt(m):
     bot.send_message(m.chat.id, "✅ رسید برای ادمین ارسال شد، لطفاً منتظر بمانید 🙏")
     user_states[m.from_user.id] = None
 
-# FIX: تایید شارژ - جلوگیری از تایید چندباره با بررسی وضعیت در دیتابیس
 @bot.callback_query_handler(func=lambda c: c.data.startswith("ok_"))
 def ok(c):
     from bson.objectid import ObjectId
@@ -300,14 +329,9 @@ def ok(c):
         order = orders_col.find_one({"_id": ObjectId(charge_order_id)})
         if not order or order.get("status") != "pending":
             bot.answer_callback_query(c.id, "⚠️ این درخواست قبلاً پردازش شده است.", show_alert=True)
-            # ویرایش کپشن برای نمایش وضعیت
             try:
                 current_caption = c.message.caption or ""
-                bot.edit_message_caption(
-                    caption=current_caption + "\n\n✅ قبلاً تایید شده بود",
-                    chat_id=c.message.chat.id,
-                    message_id=c.message.message_id
-                )
+                bot.edit_message_caption(caption=current_caption + "\n\n✅ قبلاً تایید شده بود", chat_id=c.message.chat.id, message_id=c.message.message_id)
             except: pass
             return
         orders_col.update_one({"_id": ObjectId(charge_order_id)}, {"$set": {"status": "approved"}})
@@ -315,17 +339,11 @@ def ok(c):
     users_col.update_one({"user_id": uid}, {"$inc": {"balance": amt, "success_payments": 1}})
     bot.send_message(uid, f"✅ مبلغ {format_p(amt)} تومان به حساب شما اضافه شد")
     bot.answer_callback_query(c.id, "✅ تایید شد")
-    # ویرایش کپشن پیام ادمین برای نشان دادن وضعیت
     try:
         current_caption = c.message.caption or ""
-        bot.edit_message_caption(
-            caption=current_caption + "\n\n✅ رسید با موفقیت تایید شد",
-            chat_id=c.message.chat.id,
-            message_id=c.message.message_id
-        )
+        bot.edit_message_caption(caption=current_caption + "\n\n✅ رسید با موفقیت تایید شد", chat_id=c.message.chat.id, message_id=c.message.message_id)
     except: pass
 
-# FIX: رد شارژ - جلوگیری از رد و اخطار چندباره
 @bot.callback_query_handler(func=lambda c: c.data.startswith("no_"))
 def no(c):
     from bson.objectid import ObjectId
@@ -339,11 +357,7 @@ def no(c):
             bot.answer_callback_query(c.id, "⚠️ این درخواست قبلاً پردازش شده است.", show_alert=True)
             try:
                 current_caption = c.message.caption or ""
-                bot.edit_message_caption(
-                    caption=current_caption + "\n\n❌ قبلاً رد شده بود",
-                    chat_id=c.message.chat.id,
-                    message_id=c.message.message_id
-                )
+                bot.edit_message_caption(caption=current_caption + "\n\n❌ قبلاً رد شده بود", chat_id=c.message.chat.id, message_id=c.message.message_id)
             except: pass
             return
         orders_col.update_one({"_id": ObjectId(charge_order_id)}, {"$set": {"status": "rejected"}})
@@ -358,41 +372,34 @@ def no(c):
         bot.send_message(uid, f"❌ رسید شما رد شد و اخطار دریافت کردید. (تعداد اخطار: {warns} از ۳)")
 
     bot.answer_callback_query(c.id, "❌ رد شد")
-    # ویرایش کپشن پیام ادمین
     try:
         current_caption = c.message.caption or ""
-        bot.edit_message_caption(
-            caption=current_caption + f"\n\n❌ رسید با موفقیت رد شد (اخطار کاربر: {warns} از ۳)",
-            chat_id=c.message.chat.id,
-            message_id=c.message.message_id
-        )
+        bot.edit_message_caption(caption=current_caption + f"\n\n❌ رسید با موفقیت رد شد (اخطار کاربر: {warns} از ۳)", chat_id=c.message.chat.id, message_id=c.message.message_id)
     except: pass
 
-# --------------- PRICE ---------------
+# --------------- PRICE (بهبودیافته با دکمه خرید مستقیم) ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "price")
 def price_menu(c):
-    uid = c.from_user.id
     kb = types.InlineKeyboardMarkup()
     if get_setting('sale_month'):
-        kb.add(types.InlineKeyboardButton("📅 ۱ ماهه", callback_data="price_month"))
+        kb.add(types.InlineKeyboardButton("📅 ۱ ماهه", callback_data="price_month", style="primary"))
     if get_setting('sale_vip'):
-        kb.add(types.InlineKeyboardButton("♾ بدون محدودیت زمانی + ساب + VIP", callback_data="price_vip"))
+        kb.add(types.InlineKeyboardButton("♾ بدون محدودیت زمانی + ساب + VIP", callback_data="price_vip", style="primary"))
     if get_setting('sale_napsterv'):
-        kb.add(types.InlineKeyboardButton("🔮 سرور نپستر", callback_data="price_napsterv"))
+        kb.add(types.InlineKeyboardButton("🔮 سرور نپستر", callback_data="price_napsterv", style="primary"))
     if get_setting('sale_napsterv_unlim'):
-        kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="price_napsterv_unlim"))
+        kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="price_napsterv_unlim", style="primary"))
     if get_setting('sale_wireguard'):
-        kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="price_wireguard"))
-    # FIX: سرور اختصاصی VIP حذف شد از اینجا - فقط در صورت فعال بودن sale_vip و VIP بودن کاربر نشون داده میشه
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+        kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="price_wireguard", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
     bot.edit_message_text("📊 تعرفه خدمات باز:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_month")
 def price_month(c):
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="show_month_prices"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="show_month_prices", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
     bot.edit_message_text("۱ ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "show_month_prices")
@@ -400,14 +407,17 @@ def show_month_prices(c):
     p = get_db_prices("PRICES_MONTH")
     txt = "📅 ۱ ماهه (تک کاربره)\n\n"
     for vol, price in p.items():
-        txt += f"{vol} : {format_p(price)}\n"
-    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+        txt += f"{vol} : {format_p(price)} تومان\n"
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_month", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_month", style="primary"))
+    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_vip")
 def price_vip(c):
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("♾ بدون محدودیت کاربری", callback_data="show_vip_prices"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("♾ بدون محدودیت کاربری", callback_data="show_vip_prices", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
     bot.edit_message_text("VIP:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "show_vip_prices")
@@ -415,17 +425,21 @@ def show_vip_prices(c):
     p = get_db_prices("PRICES_VIP")
     txt = "♾ بدون محدودیت + VIP (تخفیف)\n\n"
     for vol, price in p.items():
-        txt += f"{vol} : {format_p(price)}\n"
-    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+        txt += f"{vol} : {format_p(price)} تومان\n"
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_vip", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_vip", style="primary"))
+    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_napsterv")
 def price_napsterv(c):
     p = get_db_prices("PRICES_NAPSTERV")
     txt = "🔮 سرور نپستر\n\n"
     for vol, price in p.items():
-        txt += f"{vol} : {format_p(price)}\n"
+        txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_napsterv", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_napsterv_unlim")
@@ -433,9 +447,10 @@ def price_napsterv_unlim(c):
     p = get_db_prices("PRICES_NAPSTERV_UNLIM")
     txt = "🌀 سرور نامحدود نپستر\n\n"
     for vol, price in p.items():
-        txt += f"{vol} : {format_p(price)}\n"
+        txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_napsterv_unlim", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_wireguard")
@@ -443,10 +458,67 @@ def price_wireguard(c):
     p = get_db_prices("PRICES_WIREGUARD")
     txt = "🔴 سرور وایرگارد\n\n"
     for vol, price in p.items():
-        txt += f"{vol} : {format_p(price)}\n"
+        txt += f"{vol} : {format_p(price)} تومان\n"
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("🛒 خرید این سرور", callback_data="goto_buy_wireguard", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+# دکمه‌های خرید مستقیم از صفحه تعرفه
+@bot.callback_query_handler(func=lambda c: c.data == "goto_buy_month")
+def goto_buy_month(c):
+    if not get_setting('sale_month'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش بسته است.", show_alert=True); return
+    user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"MONTH"}
+    p = get_db_prices("PRICES_MONTH")
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="show_month_prices", style="primary"))
+    bot.edit_message_text("حجم ۱ ماهه را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "goto_buy_vip")
+def goto_buy_vip(c):
+    if not get_setting('sale_vip'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش بسته است.", show_alert=True); return
+    user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"VIP"}
+    p = get_db_prices("PRICES_VIP")
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="show_vip_prices", style="primary"))
+    bot.edit_message_text("حجم VIP را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "goto_buy_napsterv")
+def goto_buy_napsterv(c):
+    if not get_setting('sale_napsterv'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش بسته است.", show_alert=True); return
+    user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"NAPSTERV"}
+    p = get_db_prices("PRICES_NAPSTERV")
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_napsterv", style="primary"))
+    bot.edit_message_text("حجم سرور نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "goto_buy_napsterv_unlim")
+def goto_buy_napsterv_unlim(c):
+    if not get_setting('sale_napsterv_unlim'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش بسته است.", show_alert=True); return
+    user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"NAPSTERV_UNLIM"}
+    p = get_db_prices("PRICES_NAPSTERV_UNLIM")
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_napsterv_unlim", style="primary"))
+    bot.edit_message_text("حجم سرور نامحدود نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "goto_buy_wireguard")
+def goto_buy_wireguard(c):
+    if not get_setting('sale_wireguard'):
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش بسته است.", show_alert=True); return
+    user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"WIREGUARD"}
+    p = get_db_prices("PRICES_WIREGUARD")
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price_wireguard", style="primary"))
+    bot.edit_message_text("حجم سرور وایرگارد را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 # --------------- BUY ---------------
 
@@ -454,90 +526,85 @@ def price_wireguard(c):
 def buy(c):
     kb = types.InlineKeyboardMarkup()
     if get_setting('sale_month'):
-        kb.add(types.InlineKeyboardButton("📅 ۱ ماهه", callback_data="buy_month"))
+        kb.add(types.InlineKeyboardButton("📅 ۱ ماهه", callback_data="buy_month", style="primary"))
     if get_setting('sale_vip'):
-        kb.add(types.InlineKeyboardButton("♾ بدون محدودیت + VIP", callback_data="buy_vip"))
+        kb.add(types.InlineKeyboardButton("♾ بدون محدودیت + VIP", callback_data="buy_vip", style="primary"))
     if get_setting('sale_napsterv'):
-        kb.add(types.InlineKeyboardButton("🔮 سرور نپستر", callback_data="buy_napsterv"))
+        kb.add(types.InlineKeyboardButton("🔮 سرور نپستر", callback_data="buy_napsterv", style="primary"))
     if get_setting('sale_napsterv_unlim'):
-        kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="buy_napsterv_unlim"))
+        kb.add(types.InlineKeyboardButton("🌀 سرور نامحدود نپستر", callback_data="buy_napsterv_unlim", style="primary"))
     if get_setting('sale_wireguard'):
-        kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="buy_wireguard"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+        kb.add(types.InlineKeyboardButton("🔴 سرور وایرگارد", callback_data="buy_wireguard", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
     bot.edit_message_text("🛒 خرید سرویس:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_month")
 def buy_month(c):
     if not get_setting('sale_month'):
-        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش پلن‌های ۱ ماهه بسته است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش پلن‌های ۱ ماهه بسته است.", show_alert=True); return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"MONTH"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="buy_month_single"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
+    kb.add(types.InlineKeyboardButton("👤 تک کاربره", callback_data="buy_month_single", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
     bot.edit_message_text("۱ ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_month_single")
 def buy_month_single(c):
     p = get_db_prices("PRICES_MONTH")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_month"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_month", style="primary"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_vip")
 def buy_vip(c):
     if not get_setting('sale_vip'):
-        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش پلن‌های VIP بسته است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش پلن‌های VIP بسته است.", show_alert=True); return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"VIP"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("♾ بدون محدودیت کاربری", callback_data="buy_vip_unlim"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
+    kb.add(types.InlineKeyboardButton("♾ بدون محدودیت کاربری", callback_data="buy_vip_unlim", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
     bot.edit_message_text("VIP:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_vip_unlim")
 def buy_vip_unlim(c):
     p = get_db_prices("PRICES_VIP")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_vip"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy_vip", style="primary"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_napsterv")
 def buy_napsterv(c):
     if not get_setting('sale_napsterv'):
-        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور نپستر بسته است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور نپستر بسته است.", show_alert=True); return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"NAPSTERV"}
     p = get_db_prices("PRICES_NAPSTERV")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
     bot.edit_message_text("حجم سرور نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_napsterv_unlim")
 def buy_napsterv_unlim(c):
     if not get_setting('sale_napsterv_unlim'):
-        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور نامحدود نپستر بسته است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور نامحدود نپستر بسته است.", show_alert=True); return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"NAPSTERV_UNLIM"}
     p = get_db_prices("PRICES_NAPSTERV_UNLIM")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
     bot.edit_message_text("حجم سرور نامحدود نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "buy_wireguard")
 def buy_wireguard(c):
     if not get_setting('sale_wireguard'):
-        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور وایرگارد بسته است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ در حال حاضر فروش سرور وایرگارد بسته است.", show_alert=True); return
     user_states[c.from_user.id] = {"state":"BUY_PLAN","plan":"WIREGUARD"}
     p = get_db_prices("PRICES_WIREGUARD")
     kb = types.InlineKeyboardMarkup(row_width=3)
-    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy"))
+    for v in p.keys(): kb.add(types.InlineKeyboardButton(v, callback_data=f"vol_{v}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="buy", style="primary"))
     bot.edit_message_text("حجم سرور وایرگارد را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("vol_"))
@@ -554,7 +621,7 @@ def select_volume(c):
         bot.answer_callback_query(c.id, "❌ابتدا حساب خود را شارژ کنید", show_alert=True); return
     user_states[uid] = {"state":"CONFIRM_BUY","plan":plan,"volume":volume,"price":price}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ تایید", callback_data="final_buy"), types.InlineKeyboardButton("❌ لغو", callback_data="back"))
+    kb.add(types.InlineKeyboardButton("✅ تایید", callback_data="final_buy", style="primary"), types.InlineKeyboardButton("❌ لغو", callback_data="back", style="primary"))
     bot.send_message(uid, f"آیا از خرید سرویس {plan} حجم {volume} به مبلغ {format_p(price)} اطمینان دارید؟", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "final_buy")
@@ -568,7 +635,7 @@ def final_buy(c):
     order_id = str(res.inserted_id)
     bot.send_message(uid, "⏳ سفارش شما ثبت شد. در حال ساخت کانفیگ...")
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📤 ارسال کانفیگ", callback_data=f"sendcfg_{order_id}"))
+    kb.add(types.InlineKeyboardButton("📤 ارسال کانفیگ", callback_data=f"sendcfg_{order_id}", style="primary"))
     bot.send_message(ADMIN_ID, f"🛒 سفارش جدید\n\n🆔 OrderID: {order_id}\n👤 کاربر: {uid}\n📦 پلن: {data['plan']}\n📊 حجم: {data['volume']}\n💵 مبلغ: {format_p(price)}", reply_markup=kb)
     user_states[uid] = None
 
@@ -577,8 +644,7 @@ def final_buy(c):
 @bot.callback_query_handler(func=lambda c: c.data == "referral")
 def referral_panel(c):
     if not get_setting('ref_status'):
-        bot.answer_callback_query(c.id, "⚠️ این بخش در حال حاضر توسط ادمین بسته شده است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ این بخش در حال حاضر توسط ادمین بسته شده است.", show_alert=True); return
     uid = c.from_user.id
     user = users_col.find_one({"user_id": uid})
     count = user.get("invited_count", 0)
@@ -643,14 +709,13 @@ def account(c):
     text = f"📊 اطلاعات حساب کاربری شما در ربات: \n\n🔢 آیدی عددی : {c.from_user.id}\n🔆 یوزرنیم : {username}\n📱 وضعیت : {status}\n🏅 سطح کاربری : {level}\n💰 موجودی : {format_p(d['balance'])} تومان\n🏦 پرداخت های موفق : {d['success_payments']} عدد\n🛍 تعداد سرویس ها : {d['configs_count']} عدد\n⚠️ تعداد اخطار ها : {d['warnings']} عدد\n⏰ تاریخ عضویت : {d['join_date']}\n\n🤖 | @rafe_filter_GB_bot"
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=back_kb())
 
-# --------------- SUPPORT - FIX: مستقیم به پیوی ادمین ---------------
+# --------------- SUPPORT ---------------
 
 @bot.callback_query_handler(func=lambda c: c.data == "support")
 def support(c):
     uid = c.from_user.id
     user = users_col.find_one({"user_id": uid})
     username_display = f"@{c.from_user.username}" if c.from_user.username else "ندارد"
-    # ارسال اطلاعات کاربر به ادمین
     try:
         bot.send_message(ADMIN_ID,
             f"📞 درخواست پشتیبانی\n\n"
@@ -659,10 +724,9 @@ def support(c):
             f"🔢 آیدی: {uid}\n"
             f"💰 موجودی: {format_p(user['balance'] if user else 0)} تومان")
     except: pass
-    # FIX: دکمه مستقیم برای باز کردن پیوی ادمین
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("💬 ارتباط با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@', '')}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
     bot.edit_message_text("📞 برای ارتباط با پشتیبانی روی دکمه زیر کلیک کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 # --------------- BACK ---------------
@@ -697,9 +761,9 @@ def adm_show_user(m):
     is_banned = d.get("is_banned") or d.get("warnings", 0) >= 3
     ban_txt = "🔓 آن‌بن کردن" if is_banned else "🚫 بن کردن"
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("➕ افزودن موجودی", callback_data=f"adm_add_{uid}"), types.InlineKeyboardButton("➖ کسر موجودی", callback_data=f"adm_sub_{uid}"))
-    kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}"), types.InlineKeyboardButton(ban_txt, callback_data=f"adm_ban_{uid}"))
-    kb.add(types.InlineKeyboardButton("📩 پیام خصوصی", callback_data=f"adm_pmsg_{uid}"))
+    kb.add(types.InlineKeyboardButton("➕ افزودن موجودی", callback_data=f"adm_add_{uid}", style="primary"), types.InlineKeyboardButton("➖ کسر موجودی", callback_data=f"adm_sub_{uid}", style="primary"))
+    kb.add(types.InlineKeyboardButton("⚠️ اخطار", callback_data=f"adm_warn_{uid}", style="primary"), types.InlineKeyboardButton(ban_txt, callback_data=f"adm_ban_{uid}", style="primary"))
+    kb.add(types.InlineKeyboardButton("📩 پیام خصوصی", callback_data=f"adm_pmsg_{uid}", style="primary"))
     bot.send_message(ADMIN_ID, f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if is_banned else 'آزاد'}\n⏰ عضویت: {d['join_date']}", reply_markup=kb)
     user_states[ADMIN_ID] = None
 
@@ -791,12 +855,12 @@ def do_broadcast(m):
 @bot.callback_query_handler(func=lambda c: c.data == "adm_change_prices")
 def adm_change_prices(c):
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📅 قیمت ۱ ماهه", callback_data="FIXEDsetp_MONTH"),
-           types.InlineKeyboardButton("♾ قیمت VIP", callback_data="FIXEDsetp_VIP"))
-    kb.add(types.InlineKeyboardButton("🔮 قیمت نپستر", callback_data="FIXEDsetp_NAPSTERV"),
-           types.InlineKeyboardButton("🌀 قیمت نپستر نامحدود", callback_data="FIXEDsetp_NAPSTERV_UNLIM"))
-    kb.add(types.InlineKeyboardButton("🔴 قیمت وایرگارد", callback_data="FIXEDsetp_WIREGUARD"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    kb.add(types.InlineKeyboardButton("📅 قیمت ۱ ماهه", callback_data="FIXEDsetp_MONTH", style="primary"),
+           types.InlineKeyboardButton("♾ قیمت VIP", callback_data="FIXEDsetp_VIP", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔮 قیمت نپستر", callback_data="FIXEDsetp_NAPSTERV", style="primary"),
+           types.InlineKeyboardButton("🌀 قیمت نپستر نامحدود", callback_data="FIXEDsetp_NAPSTERV_UNLIM", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔴 قیمت وایرگارد", callback_data="FIXEDsetp_WIREGUARD", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
     bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌بندی را مدیریت می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("FIXEDsetp_"))
@@ -806,11 +870,11 @@ def FIXED_adm_setp_plan(c):
     p = get_db_prices(f"PRICES_{plan}")
     for v in list(p.keys()):
         kb.add(
-            types.InlineKeyboardButton(f"⚙️ {v} ({format_p(p[v])} ت)", callback_data=f"FIXEDedit_{plan}:::{v}"),
-            types.InlineKeyboardButton(f"❌ حذف حجم {v}", callback_data=f"FIXEDdel_{plan}:::{v}")
+            types.InlineKeyboardButton(f"⚙️ {v} ({format_p(p[v], style="primary")} ت)", callback_data=f"FIXEDedit_{plan}:::{v}"),
+            types.InlineKeyboardButton(f"❌ حذف حجم {v}", callback_data=f"FIXEDdel_{plan}:::{v}", style="primary")
         )
-    kb.add(types.InlineKeyboardButton("➕ افزودن حجم جدید به این سرویس", callback_data=f"FIXEDadd_{plan}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_change_prices"))
+    kb.add(types.InlineKeyboardButton("➕ افزودن حجم جدید به این سرویس", callback_data=f"FIXEDadd_{plan}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_change_prices", style="primary"))
     bot.edit_message_text(f"لیست حجم‌های فعلی پلن {plan}:\nجهت تغییر قیمت یا حذف انتخاب کنید یا حجم جدید بسازید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("FIXEDadd_"))
@@ -849,8 +913,7 @@ def FIXED_adm_editp_val(c):
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "FIXED_SETTING_PRICE", content_types=['text'])
 def FIXED_save_new_price(m):
     if not m.text.isdigit():
-        bot.send_message(ADMIN_ID, "❌ فقط عدد انگلیسی بدون فاصله یا کاما بفرستید:")
-        return
+        bot.send_message(ADMIN_ID, "❌ فقط عدد انگلیسی بدون فاصله یا کاما بفرستید:"); return
     new_p = int(m.text)
     data = user_states[ADMIN_ID]
     p_key = f"PRICES_{data['plan']}"
@@ -866,9 +929,9 @@ def FIXED_save_new_price(m):
 def adm_fjoin_mgr(c):
     if c.from_user.id != ADMIN_ID: return
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📢 مدیریت کانال‌ها", callback_data="fjm_channel"),
-           types.InlineKeyboardButton("👥 مدیریت گروه‌ها", callback_data="fjm_group"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    kb.add(types.InlineKeyboardButton("📢 مدیریت کانال‌ها", callback_data="fjm_channel", style="primary"),
+           types.InlineKeyboardButton("👥 مدیریت گروه‌ها", callback_data="fjm_group", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
     bot.edit_message_text("🛡 بخش مدیریت عضویت اجباری:\nیکی از موارد زیر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("fjm_"))
@@ -883,9 +946,9 @@ def fjm_list(c):
     else:
         for item in items:
             txt += f"🔹 {item['chat_id']}\n"
-            kb.add(types.InlineKeyboardButton(f"❌ حذف {item['chat_id']}", callback_data=f"fjdel_{item['_id']}"))
-    kb.add(types.InlineKeyboardButton(f"➕ افزودن {label} جدید", callback_data=f"fjadd_{target_type}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_fjoin_mgr"))
+            kb.add(types.InlineKeyboardButton(f"❌ حذف {item['chat_id']}", callback_data=f"fjdel_{item['_id']}", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"➕ افزودن {label} جدید", callback_data=f"fjadd_{target_type}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_fjoin_mgr", style="primary"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("fjadd_"))
@@ -913,7 +976,7 @@ def fjdel_confirm(c):
     adm_fjoin_mgr(c)
 
 # =====================================================================
-# ویژگی‌های اضافه‌شده
+# ویژگی‌های موجود
 # =====================================================================
 
 announcements_col = db['announcements']
@@ -926,8 +989,6 @@ for s_new in ['tutorial_status']:
 if not settings_col.find_one({"key": "server_status_text"}):
     settings_col.insert_one({"key": "server_status_text", "value": "🟢 همه سرورها آنلاین هستند."})
 
-# ==================== FIX: ساختار جدید آموزش‌ها با سه سرور برای هر OS ====================
-# مقداردهی اولیه آموزش‌های پیش‌فرض با ساختار جدید
 default_tutorials = [
     {"os": "android", "label": "📱 اندروید", "type": "text"},
     {"os": "ios", "label": "🍎 iOS (آیفون)", "type": "text"},
@@ -938,7 +999,6 @@ for tut in default_tutorials:
     if not tutorial_col.find_one({"os": tut["os"]}):
         tutorial_col.insert_one(tut)
 
-# مقداردهی اولیه محتوای سه سرور برای هر OS (اگر وجود نداشت)
 server_types = ["v2ray", "npv", "wireguard"]
 server_labels = {"v2ray": "🔵 سرور V2ray", "npv": "🟣 سرور Npv", "wireguard": "🔴 سرور Wireguard"}
 default_os_list = ["android", "ios", "windows", "mac"]
@@ -994,7 +1054,6 @@ def patched_process_new_updates(updates):
     _orig_process_new_updates(updates)
 
 bot.process_new_updates = patched_process_new_updates
-# ================================================================
 
 # ==================== ویژگی ۲: وضعیت سرورها ====================
 @bot.callback_query_handler(func=lambda c: c.data == "server_status")
@@ -1002,8 +1061,8 @@ def server_status(c):
     res = settings_col.find_one({"key": "server_status_text"})
     status_text = res['value'] if res else "وضعیت سرورها در دسترس نیست."
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔄 بروزرسانی", callback_data="server_status"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+    kb.add(types.InlineKeyboardButton("🔄 بروزرسانی", callback_data="server_status", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
     bot.edit_message_text(f"🖥 وضعیت سرورها:\n\n{status_text}", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "adm_server_status")
@@ -1013,7 +1072,7 @@ def adm_server_status(c):
     current = res['value'] if res else ""
     user_states[ADMIN_ID] = {"state": "ADM_SET_SERVER_STATUS"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
     bot.edit_message_text(f"🖥 وضعیت فعلی سرورها:\n\n{current}\n\n✏️ متن جدید را ارسال کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SET_SERVER_STATUS")
@@ -1021,15 +1080,13 @@ def save_server_status(m):
     settings_col.update_one({"key": "server_status_text"}, {"$set": {"value": m.text.strip()}})
     bot.send_message(ADMIN_ID, "✅ وضعیت سرورها بروزرسانی شد.")
     user_states[ADMIN_ID] = None
-# ================================================================
 
 # ==================== ویژگی ۳: اطلاعیه هوشمند ====================
 @bot.callback_query_handler(func=lambda c: c.data == "announcements")
 def announcements_list(c):
     items = list(announcements_col.find({}).sort("_id", -1).limit(10))
     if not items:
-        bot.edit_message_text("📢 اطلاعیه‌ای موجود نیست.", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
-        return
+        bot.edit_message_text("📢 اطلاعیه‌ای موجود نیست.", c.message.chat.id, c.message.message_id, reply_markup=back_kb()); return
     txt = "📢 آخرین اطلاعیه‌ها:\n\n"
     for item in items:
         txt += f"🔹 {item.get('date','')}\n{item.get('text','')}\n\n"
@@ -1040,7 +1097,7 @@ def adm_smart_announce(c):
     if c.from_user.id != ADMIN_ID: return
     user_states[ADMIN_ID] = {"state": "ADM_SMART_ANNOUNCE"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
     bot.edit_message_text("📢 اطلاعیه هوشمند:\n\nمتن اطلاعیه را ارسال کنید.\nپیام پس از ۶۰ ثانیه از چت کاربران حذف خواهد شد و در تاریخچه ذخیره می‌شود.", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_SMART_ANNOUNCE")
@@ -1063,12 +1120,10 @@ def do_smart_announce(m):
     def delete_after_60(messages):
         time.sleep(60)
         for item in messages:
-            try:
-                bot.delete_message(item['uid'], item['mid'])
+            try: bot.delete_message(item['uid'], item['mid'])
             except: pass
 
     Thread(target=delete_after_60, args=(sent_messages,), daemon=True).start()
-# =============================================================================
 
 # ==================== ویژگی ۴: سطح‌بندی کاربران ====================
 def get_user_level(success_payments):
@@ -1081,20 +1136,17 @@ def get_user_level(success_payments):
     else:
         return "🥉 برنزی"
 
-# FIX: حذف callback سرور اختصاصی VIP از price_menu - نگه داشتیم handler رو در صورت نیاز
 @bot.callback_query_handler(func=lambda c: c.data == "price_vip_exclusive")
 def price_vip_exclusive(c):
     uid = c.from_user.id
     user = users_col.find_one({"user_id": uid})
     if not user or get_user_level(user.get("success_payments", 0)) != "💎 VIP":
-        bot.answer_callback_query(c.id, "❌ این بخش فقط برای کاربران VIP قابل دسترس است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "❌ این بخش فقط برای کاربران VIP قابل دسترس است.", show_alert=True); return
     txt = "💎 سرور اختصاصی VIP\n\nبرای دریافت اطلاعات سرور اختصاصی VIP با پشتیبانی تماس بگیرید."
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("📞 تماس با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@','')}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="price", style="primary"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
-# ===========================================================================
 
 # ==================== ویژگی ۵: آمار کاربران فعال ====================
 @bot.callback_query_handler(func=lambda c: c.data == "adm_active_stats")
@@ -1109,11 +1161,11 @@ def adm_active_stats(c):
     month_count = users_col.count_documents({"last_activity": {"$gte": month_start}})
     total_count = users_col.count_documents({})
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(f"📅 امروز: {today_count} نفر", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton(f"📆 هفته گذشته: {week_count} نفر", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton(f"🗓 ماه گذشته: {month_count} نفر", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton(f"👥 کل کاربران: {total_count} نفر", callback_data="adm_active_stats"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    kb.add(types.InlineKeyboardButton(f"📅 امروز: {today_count} نفر", callback_data="adm_active_stats", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"📆 هفته گذشته: {week_count} نفر", callback_data="adm_active_stats", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"🗓 ماه گذشته: {month_count} نفر", callback_data="adm_active_stats", style="primary"))
+    kb.add(types.InlineKeyboardButton(f"👥 کل کاربران: {total_count} نفر", callback_data="adm_active_stats", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
     bot.edit_message_text(
         f"📊 آمار کاربران فعال:\n\n"
         f"📅 امروز: {today_count} نفر\n"
@@ -1122,45 +1174,39 @@ def adm_active_stats(c):
         f"👥 کل کاربران: {total_count} نفر",
         c.message.chat.id, c.message.message_id, reply_markup=kb
     )
-# =====================================================================
 
-# ==================== ویژگی ۶: آموزش اتصال با سه سرور و سیستم ثبت محتوا ====================
+# ==================== ویژگی ۶: آموزش اتصال ====================
 
 @bot.callback_query_handler(func=lambda c: c.data == "tutorial")
 def tutorial_menu(c):
     res = settings_col.find_one({"key": "tutorial_status"})
     if res and res['value'] == 0:
-        bot.answer_callback_query(c.id, "⚠️ بخش آموزش در حال حاضر توسط ادمین بسته شده است.", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ بخش آموزش در حال حاضر توسط ادمین بسته شده است.", show_alert=True); return
     items = list(tutorial_col.find({}))
     kb = types.InlineKeyboardMarkup()
     for item in items:
-        kb.add(types.InlineKeyboardButton(item['label'], callback_data=f"tut_os_{item['os']}"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back"))
+        kb.add(types.InlineKeyboardButton(item['label'], callback_data=f"tut_os_{item['os']}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
     bot.edit_message_text("📚 آموزش اتصال\n\nسیستم‌عامل خود را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# FIX: نمایش سه دکمه سرور برای هر OS
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_os_"))
 def tutorial_os_servers(c):
     os_key = c.data.replace("tut_os_", "")
     item = tutorial_col.find_one({"os": os_key})
     if not item:
-        bot.answer_callback_query(c.id, "سیستم‌عامل یافت نشد", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "سیستم‌عامل یافت نشد", show_alert=True); return
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔵 سرور V2ray", callback_data=f"tut_show_{os_key}_v2ray"))
-    kb.add(types.InlineKeyboardButton("🟣 سرور Npv", callback_data=f"tut_show_{os_key}_npv"))
-    kb.add(types.InlineKeyboardButton("🔴 سرور Wireguard", callback_data=f"tut_show_{os_key}_wireguard"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="tutorial"))
+    kb.add(types.InlineKeyboardButton("🔵 سرور V2ray", callback_data=f"tut_show_{os_key}_v2ray", style="primary"))
+    kb.add(types.InlineKeyboardButton("🟣 سرور Npv", callback_data=f"tut_show_{os_key}_npv", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔴 سرور Wireguard", callback_data=f"tut_show_{os_key}_wireguard", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="tutorial", style="primary"))
     bot.edit_message_text(f"📚 آموزش {item['label']}\n\nنوع سرور را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# FIX: نمایش محتوای آموزش برای OS + نوع سرور مشخص
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_show_"))
-def show_tutorial_content(c):
+def show_tutorial_content_v2(c):
     parts = c.data.replace("tut_show_", "").rsplit("_", 1)
     if len(parts) != 2:
-        bot.answer_callback_query(c.id, "خطا در دریافت اطلاعات", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "خطا در دریافت اطلاعات", show_alert=True); return
     os_key, srv_type = parts
     content_key = f"tut_content_{os_key}_{srv_type}"
     content_data = settings_col.find_one({"key": content_key})
@@ -1169,28 +1215,48 @@ def show_tutorial_content(c):
     srv_label = {"v2ray": "🔵 V2ray", "npv": "🟣 Npv", "wireguard": "🔴 Wireguard"}.get(srv_type, srv_type)
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"tut_os_{os_key}"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"tut_os_{os_key}", style="primary"))
+    header = f"📚 آموزش {os_label} - {srv_label}\n\n"
 
     if not content_data or not content_data.get('value'):
-        bot.edit_message_text(f"📚 {os_label} - {srv_label}\n\nآموزش هنوز تنظیم نشده است.", c.message.chat.id, c.message.message_id, reply_markup=kb)
-        return
+        bot.send_message(c.from_user.id, header + "آموزش هنوز تنظیم نشده است.", reply_markup=kb); return
 
     val = content_data['value']
     content_type = val.get("type", "text")
-    content_text = val.get("content", "")
-    file_id = val.get("file_id")
-    header = f"📚 آموزش {os_label} - {srv_label}\n\n"
 
-    if content_type == "text":
-        bot.edit_message_text(header + content_text, c.message.chat.id, c.message.message_id, reply_markup=kb)
-    elif content_type == "photo" and file_id:
-        bot.send_photo(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
-    elif content_type == "video" and file_id:
-        bot.send_video(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
-    elif content_type == "document" and file_id:
-        bot.send_document(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
+    if content_type == "multi":
+        items = val.get("items", [])
+        send_multi_content(c.from_user.id, items, header, f"tut_os_{os_key}")
     else:
-        bot.edit_message_text(header + content_text, c.message.chat.id, c.message.message_id, reply_markup=kb)
+        content_text = val.get("content", "")
+        file_id = val.get("file_id")
+        if content_type == "text":
+            bot.send_message(c.from_user.id, header + content_text, reply_markup=kb)
+        elif content_type == "photo" and file_id:
+            bot.send_photo(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
+        elif content_type == "video" and file_id:
+            bot.send_video(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
+        elif content_type == "document" and file_id:
+            bot.send_document(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
+        else:
+            bot.send_message(c.from_user.id, header + content_text, reply_markup=kb)
+
+def send_multi_content(user_id, items, header, back_cb):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=back_cb, style="primary"))
+    for i, item in enumerate(items):
+        t = item.get("type", "text")
+        content = item.get("content", "")
+        file_id = item.get("file_id")
+        caption = header + content if i == 0 else content
+        if t == "text":
+            bot.send_message(user_id, caption, reply_markup=kb if i == len(items)-1 else None)
+        elif t == "photo" and file_id:
+            bot.send_photo(user_id, file_id, caption=caption, reply_markup=kb if i == len(items)-1 else None)
+        elif t == "video" and file_id:
+            bot.send_video(user_id, file_id, caption=caption, reply_markup=kb if i == len(items)-1 else None)
+        elif t == "document" and file_id:
+            bot.send_document(user_id, file_id, caption=caption, reply_markup=kb if i == len(items)-1 else None)
 
 # ==================== مدیریت آموزش‌ها توسط ادمین ====================
 
@@ -1201,34 +1267,29 @@ def adm_tutorial_mgr(c):
     status = "✅ باز" if (res and res['value'] == 1) else "❌ بسته"
     items = list(tutorial_col.find({}))
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton(f"بخش آموزش: {status}", callback_data="tog_tutorial_status_adm"))
-    kb.add(types.InlineKeyboardButton("➕ افزودن سیستم‌عامل جدید", callback_data="tut_adm_add_os"))
+    kb.add(types.InlineKeyboardButton(f"بخش آموزش: {status}", callback_data="tog_tutorial_status_adm", style="primary"))
+    kb.add(types.InlineKeyboardButton("➕ افزودن سیستم‌عامل جدید", callback_data="tut_adm_add_os", style="primary"))
     for item in items:
         kb.add(
-            types.InlineKeyboardButton(f"✏️ {item['label']}", callback_data=f"tut_adm_manage_{item['os']}"),
-            types.InlineKeyboardButton(f"🗑 حذف {item['label']}", callback_data=f"tut_adm_del_os_{item['os']}")
+            types.InlineKeyboardButton(f"✏️ {item['label']}", callback_data=f"tut_adm_manage_{item['os']}", style="primary"),
+            types.InlineKeyboardButton(f"🗑 حذف {item['label']}", callback_data=f"tut_adm_del_os_{item['os']}", style="primary")
         )
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
     bot.edit_message_text("📚 مدیریت آموزش اتصال:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# FIX: حذف سیستم‌عامل از پنل ادمین
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_adm_del_os_"))
 def tut_adm_del_os(c):
     if c.from_user.id != ADMIN_ID: return
     os_key = c.data.replace("tut_adm_del_os_", "")
     item = tutorial_col.find_one({"os": os_key})
     if not item:
-        bot.answer_callback_query(c.id, "یافت نشد", show_alert=True)
-        return
-    # حذف سیستم‌عامل از tutorial_col
+        bot.answer_callback_query(c.id, "یافت نشد", show_alert=True); return
     tutorial_col.delete_one({"os": os_key})
-    # حذف محتوای سرورهای مرتبط
     for srv in ["v2ray", "npv", "wireguard"]:
         settings_col.delete_one({"key": f"tut_content_{os_key}_{srv}"})
     bot.answer_callback_query(c.id, f"✅ {item['label']} با موفقیت حذف شد", show_alert=True)
     adm_tutorial_mgr(c)
 
-# FIX: مدیریت محتوای سه سرور برای هر OS
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_adm_manage_"))
 def tut_adm_manage_os(c):
     if c.from_user.id != ADMIN_ID: return
@@ -1236,13 +1297,12 @@ def tut_adm_manage_os(c):
     item = tutorial_col.find_one({"os": os_key})
     if not item: return
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔵 ثبت آموزش V2ray", callback_data=f"tut_adm_set_{os_key}_v2ray"))
-    kb.add(types.InlineKeyboardButton("🟣 ثبت آموزش Npv", callback_data=f"tut_adm_set_{os_key}_npv"))
-    kb.add(types.InlineKeyboardButton("🔴 ثبت آموزش Wireguard", callback_data=f"tut_adm_set_{os_key}_wireguard"))
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_tutorial_mgr"))
+    kb.add(types.InlineKeyboardButton("🔵 ثبت آموزش V2ray", callback_data=f"tut_adm_set_{os_key}_v2ray", style="primary"))
+    kb.add(types.InlineKeyboardButton("🟣 ثبت آموزش Npv", callback_data=f"tut_adm_set_{os_key}_npv", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔴 ثبت آموزش Wireguard", callback_data=f"tut_adm_set_{os_key}_wireguard", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_tutorial_mgr", style="primary"))
     bot.edit_message_text(f"📚 مدیریت آموزش‌های {item['label']}:\nکدام سرور را ویرایش می‌کنید؟", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# FIX: شروع فرایند ثبت آموزش با دکمه تایید - نه ثبت خودکار
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_adm_set_"))
 def tut_adm_set_content(c):
     if c.from_user.id != ADMIN_ID: return
@@ -1256,7 +1316,7 @@ def tut_adm_set_content(c):
         "state": "TUT_COLLECTING_CONTENT",
         "os": os_key,
         "srv": srv_type,
-        "collected": [],  # لیست محتواها
+        "collected": [],
         "os_label": os_label,
         "srv_label": srv_label
     }
@@ -1267,13 +1327,11 @@ def tut_adm_set_content(c):
         f"• می‌توانید چندین محتوا ارسال کنید\n\n"
         f"وقتی آماده بودید، دکمه زیر را بزنید:"
     )
-    # ارسال دکمه ثبت آموزش
     kb2 = types.InlineKeyboardMarkup()
-    kb2.add(types.InlineKeyboardButton("✅ ثبت آموزش", callback_data=f"tut_adm_save_{os_key}_{srv_type}"))
-    kb2.add(types.InlineKeyboardButton("❌ لغو", callback_data=f"tut_adm_manage_{os_key}"))
+    kb2.add(types.InlineKeyboardButton("✅ ثبت آموزش", callback_data=f"tut_adm_save_{os_key}_{srv_type}", style="primary"))
+    kb2.add(types.InlineKeyboardButton("❌ لغو", callback_data=f"tut_adm_manage_{os_key}", style="primary"))
     bot.send_message(ADMIN_ID, "👆 محتوا را ارسال کنید، سپس دکمه ثبت را بزنید:", reply_markup=kb2)
 
-# جمع‌آوری محتوای آموزش (متن)
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_COLLECTING_CONTENT", content_types=['text'])
 def tut_collect_text(m):
     data = user_states.get(ADMIN_ID, {})
@@ -1281,7 +1339,6 @@ def tut_collect_text(m):
     data["collected"].append({"type": "text", "content": m.text.strip(), "file_id": None})
     bot.send_message(ADMIN_ID, f"✅ متن دریافت شد. می‌توانید محتوای بیشتری ارسال کنید یا دکمه ثبت را بزنید.")
 
-# جمع‌آوری محتوای آموزش (عکس)
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_COLLECTING_CONTENT", content_types=['photo'])
 def tut_collect_photo(m):
     data = user_states.get(ADMIN_ID, {})
@@ -1289,7 +1346,6 @@ def tut_collect_photo(m):
     data["collected"].append({"type": "photo", "content": m.caption or "", "file_id": m.photo[-1].file_id})
     bot.send_message(ADMIN_ID, f"✅ عکس دریافت شد. می‌توانید محتوای بیشتری ارسال کنید یا دکمه ثبت را بزنید.")
 
-# جمع‌آوری محتوای آموزش (ویدیو)
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_COLLECTING_CONTENT", content_types=['video'])
 def tut_collect_video(m):
     data = user_states.get(ADMIN_ID, {})
@@ -1297,7 +1353,6 @@ def tut_collect_video(m):
     data["collected"].append({"type": "video", "content": m.caption or "", "file_id": m.video.file_id})
     bot.send_message(ADMIN_ID, f"✅ ویدیو دریافت شد. می‌توانید محتوای بیشتری ارسال کنید یا دکمه ثبت را بزنید.")
 
-# جمع‌آوری محتوای آموزش (فایل) - فقط اگر state صحیح باشه
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "TUT_COLLECTING_CONTENT", content_types=['document'])
 def tut_collect_document(m):
     data = user_states.get(ADMIN_ID, {})
@@ -1305,7 +1360,6 @@ def tut_collect_document(m):
     data["collected"].append({"type": "document", "content": m.caption or "", "file_id": m.document.file_id})
     bot.send_message(ADMIN_ID, f"✅ فایل دریافت شد. می‌توانید محتوای بیشتری ارسال کنید یا دکمه ثبت را بزنید.")
 
-# FIX: ذخیره محتوا فقط وقتی دکمه ثبت آموزش زده میشه
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tut_adm_save_"))
 def tut_adm_save_content(c):
     if c.from_user.id != ADMIN_ID: return
@@ -1314,19 +1368,12 @@ def tut_adm_save_content(c):
     os_key, srv_type = parts
     data = user_states.get(ADMIN_ID, {})
     if data.get("state") != "TUT_COLLECTING_CONTENT":
-        bot.answer_callback_query(c.id, "هیچ محتوایی برای ثبت وجود ندارد", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "هیچ محتوایی برای ثبت وجود ندارد", show_alert=True); return
     collected = data.get("collected", [])
     if not collected:
-        bot.answer_callback_query(c.id, "⚠️ ابتدا محتوایی ارسال کنید", show_alert=True)
-        return
+        bot.answer_callback_query(c.id, "⚠️ ابتدا محتوایی ارسال کنید", show_alert=True); return
     content_key = f"tut_content_{os_key}_{srv_type}"
-    # اگر فقط یک آیتم بود، به‌صورت تکی ذخیره می‌کنیم
-    # اگر چندین آیتم بود، به‌صورت لیست ذخیره می‌کنیم
-    if len(collected) == 1:
-        save_value = collected[0]
-    else:
-        save_value = {"type": "multi", "items": collected}
+    save_value = collected[0] if len(collected) == 1 else {"type": "multi", "items": collected}
     settings_col.update_one({"key": content_key}, {"$set": {"value": save_value}}, upsert=True)
     bot.answer_callback_query(c.id, "✅ آموزش با موفقیت ذخیره شد", show_alert=True)
     os_label = data.get("os_label", os_key)
@@ -1358,9 +1405,7 @@ def tut_save_new_os_name(m):
 def tut_save_new_os_label(m):
     label = m.text.strip()
     os_key = user_states[ADMIN_ID]["os"]
-    # اضافه کردن OS جدید به دیتابیس
     tutorial_col.insert_one({"os": os_key, "label": label, "type": "text"})
-    # مقداردهی اولیه محتوای سه سرور
     for srv in ["v2ray", "npv", "wireguard"]:
         key = f"tut_content_{os_key}_{srv}"
         if not settings_col.find_one({"key": key}):
@@ -1368,72 +1413,316 @@ def tut_save_new_os_label(m):
                 "key": key,
                 "value": {"type": "text", "content": f"آموزش {srv} برای {label} هنوز تنظیم نشده است.", "file_id": None}
             })
-    bot.send_message(ADMIN_ID, f"✅ سیستم‌عامل '{label}' با کلید '{os_key}' اضافه شد.\nحالا می‌توانید از پنل مدیریت آموزش‌ها محتوا تنظیم کنید.")
+    bot.send_message(ADMIN_ID, f"✅ سیستم‌عامل '{label}' با کلید '{os_key}' اضافه شد.")
     user_states[ADMIN_ID] = None
 
-# FIX: نمایش محتوای چند آیتمی
-def send_multi_content(user_id, items, header, back_cb):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=back_cb))
-    for i, item in enumerate(items):
-        t = item.get("type", "text")
-        content = item.get("content", "")
-        file_id = item.get("file_id")
-        caption = header + content if i == 0 else content
-        if t == "text":
-            bot.send_message(user_id, caption, reply_markup=kb if i == len(items)-1 else None)
-        elif t == "photo" and file_id:
-            bot.send_photo(user_id, file_id, caption=caption, reply_markup=kb if i == len(items)-1 else None)
-        elif t == "video" and file_id:
-            bot.send_video(user_id, file_id, caption=caption, reply_markup=kb if i == len(items)-1 else None)
-        elif t == "document" and file_id:
-            bot.send_document(user_id, file_id, caption=caption, reply_markup=kb if i == len(items)-1 else None)
+# =====================================================================
+# ویژگی جدید ۷: سیستم اکانت تست
+# =====================================================================
 
-# بازنویسی show_tutorial_content برای پشتیبانی از multi
-@bot.callback_query_handler(func=lambda c: c.data.startswith("tut_show_"))
-def show_tutorial_content_v2(c):
-    parts = c.data.replace("tut_show_", "").rsplit("_", 1)
-    if len(parts) != 2:
-        bot.answer_callback_query(c.id, "خطا در دریافت اطلاعات", show_alert=True)
-        return
-    os_key, srv_type = parts
-    content_key = f"tut_content_{os_key}_{srv_type}"
-    content_data = settings_col.find_one({"key": content_key})
-    os_item = tutorial_col.find_one({"os": os_key})
-    os_label = os_item['label'] if os_item else os_key
-    srv_label = {"v2ray": "🔵 V2ray", "npv": "🟣 Npv", "wireguard": "🔴 Wireguard"}.get(srv_type, srv_type)
+# ---- بخش کاربر: اکانت تست ----
 
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data=f"tut_os_{os_key}"))
-    header = f"📚 آموزش {os_label} - {srv_label}\n\n"
+@bot.callback_query_handler(func=lambda c: c.data == "test_account")
+def test_account_menu(c):
+    uid = c.from_user.id
+    if not get_setting('test_status'):
+        bot.answer_callback_query(c.id, "⚠️ بخش اکانت تست در حال حاضر بسته است.", show_alert=True); return
 
-    if not content_data or not content_data.get('value'):
-        bot.send_message(c.from_user.id, header + "آموزش هنوز تنظیم نشده است.", reply_markup=kb)
+    # بررسی عضویت در کانال و گروه
+    if not is_member(uid):
+        kb = types.InlineKeyboardMarkup()
+        items = list(fjoin_col.find({}))
+        for item in items:
+            label = "📢 کانال" if item['type'] == "channel" else "👥 گروه"
+            url = f"https://t.me/{item['chat_id'].replace('@','')}"
+            kb.add(types.InlineKeyboardButton(label, url=url))
+        kb.add(types.InlineKeyboardButton("✅ عضو شدم", callback_data="test_check_join", style="primary"))
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+        bot.edit_message_text("⚠️ برای دریافت اکانت تست، ابتدا باید عضو کانال و گروه ما باشید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
         return
 
-    val = content_data['value']
-    content_type = val.get("type", "text")
+    # نمایش دکمه‌های نوع تست (از پنل ادمین)
+    test_buttons_doc = settings_col.find_one({"key": "test_buttons"})
+    test_buttons = test_buttons_doc['value'] if test_buttons_doc else []
 
-    if content_type == "multi":
-        items = val.get("items", [])
-        send_multi_content(c.from_user.id, items, header, f"tut_os_{os_key}")
-    else:
-        content_text = val.get("content", "")
-        file_id = val.get("file_id")
-        if content_type == "text":
-            bot.send_message(c.from_user.id, header + content_text, reply_markup=kb)
-        elif content_type == "photo" and file_id:
-            bot.send_photo(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
-        elif content_type == "video" and file_id:
-            bot.send_video(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
-        elif content_type == "document" and file_id:
-            bot.send_document(c.from_user.id, file_id, caption=header + content_text, reply_markup=kb)
+    if not test_buttons:
+        bot.edit_message_text("⚠️ در حال حاضر هیچ نوع تست فعالی موجود نیست.", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+        return
+
+    kb = types.InlineKeyboardMarkup()
+    for btn in test_buttons:
+        btn_key = btn['key']
+        btn_label = btn['label']
+        # بررسی اگه کاربر این نوع تست رو قبلاً گرفته
+        already_used = test_used_col.find_one({"user_id": uid, "test_key": btn_key})
+        if already_used:
+            kb.add(types.InlineKeyboardButton(f"✅ {btn_label} (قبلاً دریافت شد, style="primary")", callback_data=f"test_already_{btn_key}"))
         else:
-            bot.send_message(c.from_user.id, header + content_text, reply_markup=kb)
+            kb.add(types.InlineKeyboardButton(f"🎁 {btn_label}", callback_data=f"test_get_{btn_key}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="back", style="primary"))
+    bot.edit_message_text("🎁 اکانت تست\n\nنوع سرور تست را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-# =========================================================================
+@bot.callback_query_handler(func=lambda c: c.data == "test_check_join")
+def test_check_join(c):
+    uid = c.from_user.id
+    if is_member(uid):
+        # دوباره منوی تست رو نشون بده
+        test_account_menu(c)
+    else:
+        bot.answer_callback_query(c.id, "هنوز عضو کانال یا گروه نشدی!", show_alert=True)
 
+@bot.callback_query_handler(func=lambda c: c.data.startswith("test_already_"))
+def test_already(c):
+    bot.answer_callback_query(c.id, "⚠️ شما قبلاً این تست را دریافت کرده‌اید و امکان دریافت مجدد وجود ندارد.", show_alert=True)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("test_get_"))
+def test_get(c):
+    uid = c.from_user.id
+    btn_key = c.data.replace("test_get_", "")
+
+    if not get_setting('test_status'):
+        bot.answer_callback_query(c.id, "⚠️ بخش اکانت تست بسته است.", show_alert=True); return
+
+    if not is_member(uid):
+        bot.answer_callback_query(c.id, "⚠️ ابتدا باید عضو کانال و گروه ما باشید.", show_alert=True); return
+
+    # بررسی اگه قبلاً این نوع تست رو گرفته (حتی اگه دکمه حذف و اضافه شده باشه)
+    already_used = test_used_col.find_one({"user_id": uid, "test_key": btn_key})
+    if already_used:
+        bot.answer_callback_query(c.id, "⚠️ شما قبلاً این تست را دریافت کرده‌اید.", show_alert=True); return
+
+    # گرفتن اولین اکانت تست موجود از مخزن برای این کلید
+    test_acc = test_accounts_col.find_one({"btn_key": btn_key, "used": False})
+    if not test_acc:
+        bot.answer_callback_query(c.id, "⚠️ فعلاً تست در مخزن موجود نیست!", show_alert=True)
+        bot.edit_message_text("❌ متأسفانه در حال حاضر اکانت تست در مخزن موجود نیست.\nلطفاً بعداً مراجعه کنید.", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+        return
+
+    # علامت‌گذاری اکانت به عنوان استفاده شده
+    test_accounts_col.update_one({"_id": test_acc["_id"]}, {"$set": {"used": True, "given_to": uid, "given_at": now_str()}})
+
+    # ثبت کاربر در لیست دریافت‌کنندگان تست
+    test_used_col.insert_one({"user_id": uid, "test_key": btn_key, "account_id": str(test_acc["_id"]), "date": now_str()})
+
+    # پیدا کردن label دکمه
+    test_buttons_doc = settings_col.find_one({"key": "test_buttons"})
+    test_buttons = test_buttons_doc['value'] if test_buttons_doc else []
+    btn_label = next((b['label'] for b in test_buttons if b['key'] == btn_key), btn_key)
+
+    # ارسال اکانت تست به کاربر
+    msg = f"🎁 اکانت تست {btn_label}\n\n"
+    msg += f"📋 اطلاعات اکانت:\n{test_acc['account_data']}\n\n"
+    msg += f"📊 حجم: ۵۰۰ مگ\n"
+    msg += f"⏰ مهلت استفاده: ۱ روز\n"
+    msg += f"👤 حداکثر اتصال: ۱\n\n"
+    msg += f"⚠️ این اکانت تست بوده و فقط یک بار قابل استفاده است."
+
+    bot.send_message(uid, msg)
+    bot.edit_message_text("✅ اکانت تست شما ارسال شد!\nبه پیام‌های خود مراجعه کنید.", c.message.chat.id, c.message.message_id, reply_markup=back_kb())
+
+# ---- بخش ادمین: مدیریت اکانت تست ----
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_test_mgr")
+def adm_test_mgr(c):
+    if c.from_user.id != ADMIN_ID: return
+
+    test_buttons_doc = settings_col.find_one({"key": "test_buttons"})
+    test_buttons = test_buttons_doc['value'] if test_buttons_doc else []
+    t_status = "✅ فعال" if get_setting('test_status') else "❌ غیرفعال"
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton(f"وضعیت تست: {t_status}", callback_data="adm_tog_test", style="primary"))
+    kb.add(types.InlineKeyboardButton("➕ افزودن نوع تست جدید", callback_data="adm_test_add_btn", style="primary"))
+
+    for btn in test_buttons:
+        btn_key = btn['key']
+        btn_label = btn['label']
+        total = test_accounts_col.count_documents({"btn_key": btn_key})
+        used = test_accounts_col.count_documents({"btn_key": btn_key, "used": True})
+        remaining = total - used
+        kb.add(types.InlineKeyboardButton(
+            f"📦 {btn_label} | موجود: {remaining} | داده‌شده: {used}",
+            callback_data=f"adm_test_detail_{btn_key}"
+        , style="primary"))
+
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    bot.edit_message_text(
+        "🎁 مدیریت اکانت تست\n\nوضعیت هر نوع تست را مشاهده و مدیریت کنید:",
+        c.message.chat.id, c.message.message_id, reply_markup=kb
+    )
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_tog_test")
+def adm_tog_test(c):
+    if c.from_user.id != ADMIN_ID: return
+    current = get_setting('test_status')
+    settings_col.update_one({"key": "test_status"}, {"$set": {"value": 0 if current else 1}})
+    adm_test_mgr(c)
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_test_add_btn")
+def adm_test_add_btn(c):
+    if c.from_user.id != ADMIN_ID: return
+    user_states[ADMIN_ID] = {"state": "ADM_TEST_WAIT_BTN_KEY"}
+    bot.send_message(ADMIN_ID, "نام کلید برای نوع تست جدید را وارد کنید (فقط انگلیسی، مثلاً: wireguard یا v2ray):")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_TEST_WAIT_BTN_KEY")
+def adm_test_save_btn_key(m):
+    btn_key = m.text.strip().lower().replace(" ", "_")
+    user_states[ADMIN_ID] = {"state": "ADM_TEST_WAIT_BTN_LABEL", "btn_key": btn_key}
+    bot.send_message(ADMIN_ID, f"کلید: {btn_key}\nحالا نام نمایشی دکمه را وارد کنید (مثلاً: وایرگارد یا WireGuard):")
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_TEST_WAIT_BTN_LABEL")
+def adm_test_save_btn_label(m):
+    btn_label = m.text.strip()
+    btn_key = user_states[ADMIN_ID]["btn_key"]
+
+    # اضافه کردن به لیست دکمه‌های تست
+    test_buttons_doc = settings_col.find_one({"key": "test_buttons"})
+    test_buttons = test_buttons_doc['value'] if test_buttons_doc else []
+
+    # بررسی تکراری نبودن
+    if any(b['key'] == btn_key for b in test_buttons):
+        bot.send_message(ADMIN_ID, f"❌ کلید '{btn_key}' قبلاً وجود دارد. یک کلید دیگر انتخاب کنید.")
+        user_states[ADMIN_ID] = None
+        return
+
+    test_buttons.append({"key": btn_key, "label": btn_label})
+    settings_col.update_one({"key": "test_buttons"}, {"$set": {"value": test_buttons}})
+    bot.send_message(ADMIN_ID, f"✅ نوع تست '{btn_label}' با کلید '{btn_key}' اضافه شد.\nحالا می‌توانید اکانت‌های تست برای آن اضافه کنید.")
+    user_states[ADMIN_ID] = None
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_test_detail_"))
+def adm_test_detail(c):
+    if c.from_user.id != ADMIN_ID: return
+    btn_key = c.data.replace("adm_test_detail_", "")
+
+    test_buttons_doc = settings_col.find_one({"key": "test_buttons"})
+    test_buttons = test_buttons_doc['value'] if test_buttons_doc else []
+    btn_label = next((b['label'] for b in test_buttons if b['key'] == btn_key), btn_key)
+
+    total = test_accounts_col.count_documents({"btn_key": btn_key})
+    used = test_accounts_col.count_documents({"btn_key": btn_key, "used": True})
+    remaining = total - used
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("➕ افزودن اکانت‌های تست", callback_data=f"adm_test_add_acc_{btn_key}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🗑 حذف این نوع تست", callback_data=f"adm_test_del_btn_{btn_key}", style="primary"))
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_test_mgr", style="primary"))
+
+    bot.edit_message_text(
+        f"📦 مدیریت تست: {btn_label}\n\n"
+        f"📊 کل اکانت‌ها: {total}\n"
+        f"✅ داده‌شده: {used}\n"
+        f"🔵 موجود در مخزن: {remaining}\n\n"
+        f"برای افزودن اکانت‌های جدید روی دکمه زیر کلیک کنید:",
+        c.message.chat.id, c.message.message_id, reply_markup=kb
+    )
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_test_add_acc_"))
+def adm_test_add_acc(c):
+    if c.from_user.id != ADMIN_ID: return
+    btn_key = c.data.replace("adm_test_add_acc_", "")
+    user_states[ADMIN_ID] = {"state": "ADM_TEST_WAIT_ACCOUNTS", "btn_key": btn_key, "accounts": []}
+    bot.send_message(ADMIN_ID,
+        f"📝 افزودن اکانت تست برای: {btn_key}\n\n"
+        f"هر اکانت را در یک پیام جداگانه ارسال کنید.\n"
+        f"وقتی همه اکانت‌ها را فرستادید، بنویسید: /done"
+    )
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and user_states.get(ADMIN_ID, {}).get("state") == "ADM_TEST_WAIT_ACCOUNTS")
+def adm_test_collect_accounts(m):
+    if m.text == "/done":
+        data = user_states.get(ADMIN_ID, {})
+        accounts = data.get("accounts", [])
+        btn_key = data.get("btn_key")
+        if not accounts:
+            bot.send_message(ADMIN_ID, "❌ هیچ اکانتی ارسال نشد.")
+        else:
+            for acc in accounts:
+                test_accounts_col.insert_one({
+                    "btn_key": btn_key,
+                    "account_data": acc,
+                    "used": False,
+                    "given_to": None,
+                    "given_at": None,
+                    "added_at": now_str()
+                })
+            bot.send_message(ADMIN_ID, f"✅ {len(accounts)} اکانت تست برای '{btn_key}' اضافه شد.")
+        user_states[ADMIN_ID] = None
+        return
+
+    data = user_states.get(ADMIN_ID, {})
+    data["accounts"].append(m.text.strip())
+    count = len(data["accounts"])
+    bot.send_message(ADMIN_ID, f"✅ اکانت {count} دریافت شد. ادامه دهید یا /done بنویسید.")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_test_del_btn_"))
+def adm_test_del_btn(c):
+    if c.from_user.id != ADMIN_ID: return
+    btn_key = c.data.replace("adm_test_del_btn_", "")
+
+    # حذف از لیست دکمه‌ها
+    test_buttons_doc = settings_col.find_one({"key": "test_buttons"})
+    test_buttons = test_buttons_doc['value'] if test_buttons_doc else []
+    test_buttons = [b for b in test_buttons if b['key'] != btn_key]
+    settings_col.update_one({"key": "test_buttons"}, {"$set": {"value": test_buttons}})
+
+    # اکانت‌های استفاده نشده رو حذف کن (اما رکورد داده‌شده‌ها رو نگه دار)
+    test_accounts_col.delete_many({"btn_key": btn_key, "used": False})
+
+    bot.answer_callback_query(c.id, f"✅ نوع تست '{btn_key}' حذف شد. (اکانت‌های داده‌شده در تاریخچه باقی ماندند)", show_alert=True)
+    adm_test_mgr(c)
+
+# =====================================================================
+# ویژگی جدید ۸: گزارش خریداران
+# =====================================================================
+
+@bot.callback_query_handler(func=lambda c: c.data == "adm_buyers_report")
+def adm_buyers_report(c):
+    if c.from_user.id != ADMIN_ID: return
+    kb = types.InlineKeyboardMarkup()
+
+    # دکمه برای هر نوع سرور
+    server_list = [
+        ("📅 ۱ ماهه", "MONTH"),
+        ("♾ VIP", "VIP"),
+        ("🔮 نپستر", "NAPSTERV"),
+        ("🌀 نپستر نامحدود", "NAPSTERV_UNLIM"),
+        ("🔴 وایرگارد", "WIREGUARD"),
+    ]
+    for label, plan_key in server_list:
+        count = orders_col.count_documents({"plan": plan_key, "status": "done"})
+        kb.add(types.InlineKeyboardButton(f"{label} ({count} خرید, style="primary")", callback_data=f"adm_buyers_{plan_key}"))
+
+    kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back", style="primary"))
+    bot.edit_message_text("📋 گزارش خریداران\n\nروی هر سرور کلیک کنید تا خریداران آن را ببینید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("adm_buyers_") and not c.data.startswith("adm_buyers_report"))
+def adm_buyers_plan(c):
+    if c.from_user.id != ADMIN_ID: return
+    plan_key = c.data.replace("adm_buyers_", "")
+    orders = list(orders_col.find({"plan": plan_key, "status": "done"}).sort("_id", -1).limit(50))
+
+    if not orders:
+        bot.answer_callback_query(c.id, "هیچ خریدی برای این سرور ثبت نشده.", show_alert=True); return
+
+    txt = f"📋 خریداران سرور {plan_key}:\n\n"
+    for o in orders:
+        txt += f"👤 کاربر: {o['user_id']} | حجم: {o['volume']} | {format_p(o['price'])} ت | {o.get('created_at','')}\n"
+
+    # اگه متن خیلی طولانی بود، به چند پیام تقسیم کن
+    if len(txt) > 4000:
+        parts = [txt[i:i+4000] for i in range(0, len(txt), 4000)]
+        for part in parts:
+            bot.send_message(ADMIN_ID, part)
+    else:
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🔙 بازگشت", callback_data="adm_buyers_report", style="primary"))
+        bot.send_message(ADMIN_ID, txt, reply_markup=kb)
+
+# =====================================================================
 # به‌روزرسانی last_activity در هر callback
+# =====================================================================
+
 _original_process = bot.process_new_updates
 
 def update_activity_middleware(updates):
