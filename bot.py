@@ -250,33 +250,40 @@ def get_current_time_both_calendars():
 
 
 def add_row(kb, *buttons):
-    """تابع کمکی مشترک برای افزودن یک ردیف دکمه بدون پارامتر style"""
+    """تابع کمکی مشترک برای افزودن یک ردیف دکمه"""
     kb.add(*buttons)
     return kb
 
 
-def btn(text, callback_data=None, url=None):
-    """تابع کمکی ساخت دکمه بدون استفاده از style= (که در API تلگرام وجود ندارد)"""
+def btn(text, callback_data=None, url=None, style=None):
+    """تابع کمکی ساخت دکمه با پشتیبانی از style (primary / success / danger)"""
+    kwargs = {}
     if url:
-        return types.InlineKeyboardButton(text, url=url)
-    return types.InlineKeyboardButton(text, callback_data=callback_data)
+        kwargs["url"] = url
+    if callback_data is not None:
+        kwargs["callback_data"] = callback_data
+    if style is not None:
+        kwargs["style"] = style
+    return types.InlineKeyboardButton(text, **kwargs)
 
 
 def main_menu():
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🛒 خرید سرور", "buy"))
-    kb.add(btn("📊 تعرفه", "price"), btn("👤 حساب کاربری", "account"))
-    kb.add(btn("💰 افزایش موجودی", "charge"), btn("👥 زیرمجموعه‌گیری", "referral"))
-    kb.add(btn("🖥 وضعیت سرورها", "server_status"), btn("📢 اطلاعیه‌ها", "announcements"))
-    kb.add(btn("📚 آموزش اتصال", "tutorial"), btn("🔍 پیگیری سفارش", "track_order"), btn("📞 پشتیبانی", "support"))
+    kb.add(btn("🛒 خرید سرور", "buy", style="primary"))
+    kb.add(btn("📊 تعرفه", "price", style="primary"), btn("👤 حساب کاربری", "account", style="primary"))
+    kb.add(btn("💰 افزایش موجودی", "charge", style="primary"), btn("👥 زیرمجموعه‌گیری", "referral", style="primary"))
+    kb.add(btn("🖥 وضعیت سرورها", "server_status", style="primary"), btn("📢 اطلاعیه‌ها", "announcements", style="primary"))
+    kb.add(btn("📚 آموزش اتصال", "tutorial", style="primary"),
+           btn("🔍 پیگیری سفارش", "track_order", style="primary"),
+           btn("📞 پشتیبانی", "support", style="primary"))
     if get_setting('test_status'):
-        kb.add(btn("🎁 اکانت تست", "test_account"))
+        kb.add(btn("🎁 اکانت تست", "test_account", style="success"))
     return kb
 
 
 def back_kb():
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔙 بازگشت", "back"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     return kb
 
 
@@ -307,21 +314,21 @@ def admin_panel_text():
 def build_admin_kb():
     """کیبورد پنل ادمین - جدا شده تا در همه جا یکسان استفاده شود"""
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📦 سفارشات باز", "adm_orders"))
-    kb.add(btn("🔎 مشاهده کاربر", "adm_get_user"))
-    kb.add(btn("📣 ارسال همگانی", "adm_broadcast"))
-    kb.add(btn("⚙️ مدیریت فروش", "adm_settings"))
-    kb.add(btn("💰 تغییر قیمت‌ها", "adm_change_prices"))
-    kb.add(btn("🛡 مدیریت عضویت", "adm_fjoin_mgr"))
-    kb.add(btn("🖥 وضعیت سرورها", "adm_server_status"))
-    kb.add(btn("📢 اطلاعیه هوشمند", "adm_smart_announce"))
-    kb.add(btn("📊 آمار کاربران فعال", "adm_active_stats"))
-    kb.add(btn("📚 مدیریت آموزش اتصال", "adm_tutorial_mgr"))
-    kb.add(btn("🎁 مدیریت اکانت تست", "adm_test_mgr"))
-    kb.add(btn("📋 گزارش خریداران", "adm_buyers_report"))
-    kb.add(btn("🏷 مدیریت کدهای تخفیف", "adm_coupon_mgr"))
-    kb.add(btn("👥 مدیریت ادمین‌های فرعی", "adm_subadmin_mgr"))
-    kb.add(btn("⭐ تنظیمات نظرسنجی و یادآوری", "adm_extra_systems"))
+    kb.add(btn("📦 سفارشات باز", "adm_orders", style="primary"))
+    kb.add(btn("🔎 مشاهده کاربر", "adm_get_user", style="primary"))
+    kb.add(btn("📣 ارسال همگانی", "adm_broadcast", style="primary"))
+    kb.add(btn("⚙️ مدیریت فروش", "adm_settings", style="primary"))
+    kb.add(btn("💰 تغییر قیمت‌ها", "adm_change_prices", style="primary"))
+    kb.add(btn("🛡 مدیریت عضویت", "adm_fjoin_mgr", style="primary"))
+    kb.add(btn("🖥 وضعیت سرورها", "adm_server_status", style="primary"))
+    kb.add(btn("📢 اطلاعیه هوشمند", "adm_smart_announce", style="primary"))
+    kb.add(btn("📊 آمار کاربران فعال", "adm_active_stats", style="primary"))
+    kb.add(btn("📚 مدیریت آموزش اتصال", "adm_tutorial_mgr", style="primary"))
+    kb.add(btn("🎁 مدیریت اکانت تست", "adm_test_mgr", style="primary"))
+    kb.add(btn("📋 گزارش خریداران", "adm_buyers_report", style="primary"))
+    kb.add(btn("🏷 مدیریت کدهای تخفیف", "adm_coupon_mgr", style="primary"))
+    kb.add(btn("👥 مدیریت ادمین‌های فرعی", "adm_subadmin_mgr", style="primary"))
+    kb.add(btn("⭐ تنظیمات نظرسنجی و یادآوری", "adm_extra_systems", style="primary"))
     return kb
 
 
@@ -340,8 +347,8 @@ def render_admin_panel(chat_id, message_id=None):
 
 def build_subadmin_kb():
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📦 مشاهده سفارشات فعال", "sub_view_orders"))
-    kb.add(btn("📤 ارسال کانفیگ با کد سفارش", "sub_send_config_by_id"))
+    kb.add(btn("📦 مشاهده سفارشات فعال", "sub_view_orders", style="primary"))
+    kb.add(btn("📤 ارسال کانفیگ با کد سفارش", "sub_send_config_by_id", style="primary"))
     return kb
 
 
@@ -410,8 +417,8 @@ def start(m):
         for item in items:
             label = "📢 کانال" if item['type'] == "channel" else "👥 گروه"
             url = f"https://t.me/{item['chat_id'].replace('@', '')}"
-            kb.add(btn(label, url=url))
-        kb.add(btn("✅ عضو شدم", "check_join"))
+            kb.add(btn(label, url=url, style="primary"))
+        kb.add(btn("✅ عضو شدم", "check_join", style="primary"))
         bot.send_message(uid, "برای استفاده ابتدا عضو موارد زیر شوید:", reply_markup=kb)
         return
     bot.send_message(uid, "👇 منوی اصلی:", reply_markup=main_menu())
@@ -464,8 +471,8 @@ def adm_settings(c):
     kb = types.InlineKeyboardMarkup()
     for key in SALE_TOGGLE_KEYS:
         status = "✅ باز" if get_setting(key) else "❌ بسته"
-        kb.add(btn(f"{labels[key]}: {status}", f"SALE_TOG_{key}"))
-    kb.add(btn("🔙 بازگشت به پنل", "admin_back"))
+        kb.add(btn(f"{labels[key]}: {status}", f"SALE_TOG_{key}", style="primary"))
+    kb.add(btn("🔙 بازگشت به پنل", "admin_back", style="danger"))
     bot.edit_message_text("⚙️ مدیریت وضعیت خدمات:\n(با کلیک روی هر دکمه وضعیت آن عوض می‌شود)", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -509,8 +516,8 @@ def charge(c):
         bot.answer_callback_query(c.id, "⚠️ در حال حاضر بخش افزایش موجودی موقتاً بسته است.", show_alert=True)
         return
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("💳 کارت به کارت", "c2c"))
-    kb.add(btn("🔙 بازگشت", "back"))
+    kb.add(btn("💳 کارت به کارت", "c2c", style="primary"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     bot.edit_message_text("روش پرداخت:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -539,7 +546,7 @@ def get_card(m):
     user_states[m.from_user.id] = {"state": "WAIT_RECEIPT", "amount": amt, "card": m.text.strip(),
                                     "expire_at": expire_at, "invoice_time": datetime.now(), "is_expired": False}
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📸 ارسال رسید", "send_receipt"))
+    kb.add(btn("📸 ارسال رسید", "send_receipt", style="success"))
     bot.send_message(m.chat.id,
                       f"✅ اطلاعات ثبت شد\n\n💰 مبلغ: {format_p(amt)} تومان\n💳 کارت مقصد:\n6221061233705260\n👤 به نام: افراس\n\n⚠️ مبلغ را واریز کرده و رسید را ارسال کنید\n\n⏰ فاکتور تا ۳۰ دقیقه معتبر است",
                       reply_markup=kb)
@@ -598,8 +605,8 @@ def receipt(m):
 
     kb = types.InlineKeyboardMarkup()
     kb.add(
-        btn("✅ تایید", f"ok_{uid}_{data['amount']}_{charge_order_id}"),
-        btn("❌ رد", f"no_{uid}_{charge_order_id}")
+        btn("✅ تایید", f"ok_{uid}_{data['amount']}_{charge_order_id}", style="success"),
+        btn("❌ رد", f"no_{uid}_{charge_order_id}", style="danger")
     )
 
     bot.send_photo(ADMIN_ID, m.photo[-1].file_id,
@@ -663,7 +670,7 @@ def ok(c):
             bot.send_message(uid, f"تبریک! به سطح {new_level} ارتقا یافتید ❤️‍🔥")
             if new_level == "💎 VIP":
                 kb_gift = types.InlineKeyboardMarkup()
-                kb_gift.add(btn("🎁 ارسال هدیه VIP", f"gift_vip_{uid}"))
+                kb_gift.add(btn("🎁 ارسال هدیه VIP", f"gift_vip_{uid}", style="success"))
                 bot.send_message(ADMIN_ID, f"🏅 کاربر {uid} به سطح VIP رسید!", reply_markup=kb_gift)
 
         bot.send_message(uid, f"✅ مبلغ {format_p(amt)} تومان به حساب شما اضافه شد")
@@ -749,24 +756,24 @@ def no(c):
 def price_menu(c):
     kb = types.InlineKeyboardMarkup()
     if get_setting('sale_month'):
-        kb.add(btn("📅 ۱ ماهه", "price_month"))
+        kb.add(btn("📅 ۱ ماهه", "price_month", style="primary"))
     if get_setting('sale_vip'):
-        kb.add(btn("♾ بدون محدودیت زمانی + ساب + VIP", "price_vip"))
+        kb.add(btn("♾ بدون محدودیت زمانی + ساب + VIP", "price_vip", style="primary"))
     if get_setting('sale_napsterv'):
-        kb.add(btn("🔮 سرور نپستر", "price_napsterv"))
+        kb.add(btn("🔮 سرور نپستر", "price_napsterv", style="primary"))
     if get_setting('sale_napsterv_unlim'):
-        kb.add(btn("🌀 سرور نامحدود نپستر", "price_napsterv_unlim"))
+        kb.add(btn("🌀 سرور نامحدود نپستر", "price_napsterv_unlim", style="primary"))
     if get_setting('sale_wireguard'):
-        kb.add(btn("🔴 سرور وایرگارد", "price_wireguard"))
-    kb.add(btn("🔙 بازگشت", "back"))
+        kb.add(btn("🔴 سرور وایرگارد", "price_wireguard", style="primary"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     bot.edit_message_text("📊 تعرفه خدمات باز:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
 @bot.callback_query_handler(func=lambda c: c.data == "price_month")
 def price_month(c):
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("👤 تک کاربره", "show_month_prices"))
-    kb.add(btn("🔙 بازگشت", "price"))
+    kb.add(btn("👤 تک کاربره", "show_month_prices", style="primary"))
+    kb.add(btn("🔙 بازگشت", "price", style="danger"))
     bot.edit_message_text("۱ ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -775,10 +782,10 @@ def price_plan_kb(plan_key, prices_dict, back_cb, buy_cb=None):
     + یک دکمه خرید مشترک + یک دکمه بازگشت"""
     kb = types.InlineKeyboardMarkup()
     for vol, price in prices_dict.items():
-        kb.add(btn(f"📦 {vol}  ━━━━━━  {format_p(price)} تومان", "price_info_dummy"))
+        kb.add(btn(f"📦 {vol}  ━━━━━━  {format_p(price)} تومان", "price_info_dummy", style="primary"))
     if buy_cb:
-        kb.add(btn("🛒 خرید این سرور", buy_cb))
-    kb.add(btn("🔙 بازگشت", back_cb))
+        kb.add(btn("🛒 خرید این سرور", buy_cb, style="success"))
+    kb.add(btn("🔙 بازگشت", back_cb, style="danger"))
     return kb
 
 
@@ -801,8 +808,8 @@ def show_month_prices(c):
 @bot.callback_query_handler(func=lambda c: c.data == "price_vip")
 def price_vip(c):
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("♾ بدون محدودیت کاربری", "show_vip_prices"))
-    kb.add(btn("🔙 بازگشت", "price"))
+    kb.add(btn("♾ بدون محدودیت کاربری", "show_vip_prices", style="primary"))
+    kb.add(btn("🔙 بازگشت", "price", style="danger"))
     bot.edit_message_text("VIP:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -833,8 +840,8 @@ def render_volume_select(c, plan, p_type, back_cb, text):
     p = get_db_prices(p_type)
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys():
-        kb.add(btn(v, f"vol_{v}"))
-    kb.add(btn("🔙 بازگشت", back_cb))
+        kb.add(btn(v, f"vol_{v}", style="success"))
+    kb.add(btn("🔙 بازگشت", back_cb, style="danger"))
     bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -887,16 +894,16 @@ def goto_buy_wireguard(c):
 def buy(c):
     kb = types.InlineKeyboardMarkup()
     if get_setting('sale_month'):
-        kb.add(btn("📅 ۱ ماهه", "buy_month"))
+        kb.add(btn("📅 ۱ ماهه", "buy_month", style="primary"))
     if get_setting('sale_vip'):
-        kb.add(btn("♾ بدون محدودیت + VIP", "buy_vip"))
+        kb.add(btn("♾ بدون محدودیت + VIP", "buy_vip", style="primary"))
     if get_setting('sale_napsterv'):
-        kb.add(btn("🔮 سرور نپستر", "buy_napsterv"))
+        kb.add(btn("🔮 سرور نپستر", "buy_napsterv", style="primary"))
     if get_setting('sale_napsterv_unlim'):
-        kb.add(btn("🌀 سرور نامحدود نپستر", "buy_napsterv_unlim"))
+        kb.add(btn("🌀 سرور نامحدود نپستر", "buy_napsterv_unlim", style="primary"))
     if get_setting('sale_wireguard'):
-        kb.add(btn("🔴 سرور وایرگارد", "buy_wireguard"))
-    kb.add(btn("🔙 بازگشت", "back"))
+        kb.add(btn("🔴 سرور وایرگارد", "buy_wireguard", style="primary"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     bot.edit_message_text("🛒 خرید سرویس:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -907,8 +914,8 @@ def buy_month(c):
         return
     user_states[c.from_user.id] = {"state": "BUY_PLAN", "plan": "MONTH"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("👤 تک کاربره", "buy_month_single"))
-    kb.add(btn("🔙 بازگشت", "buy"))
+    kb.add(btn("👤 تک کاربره", "buy_month_single", style="primary"))
+    kb.add(btn("🔙 بازگشت", "buy", style="danger"))
     bot.edit_message_text("۱ ماهه:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -917,8 +924,8 @@ def buy_month_single(c):
     p = get_db_prices("PRICES_MONTH")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys():
-        kb.add(btn(v, f"vol_{v}"))
-    kb.add(btn("🔙 بازگشت", "buy_month"))
+        kb.add(btn(v, f"vol_{v}", style="success"))
+    kb.add(btn("🔙 بازگشت", "buy_month", style="danger"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -929,8 +936,8 @@ def buy_vip(c):
         return
     user_states[c.from_user.id] = {"state": "BUY_PLAN", "plan": "VIP"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("♾ بدون محدودیت کاربری", "buy_vip_unlim"))
-    kb.add(btn("🔙 بازگشت", "buy"))
+    kb.add(btn("♾ بدون محدودیت کاربری", "buy_vip_unlim", style="primary"))
+    kb.add(btn("🔙 بازگشت", "buy", style="danger"))
     bot.edit_message_text("VIP:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -939,8 +946,8 @@ def buy_vip_unlim(c):
     p = get_db_prices("PRICES_VIP")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys():
-        kb.add(btn(v, f"vol_{v}"))
-    kb.add(btn("🔙 بازگشت", "buy_vip"))
+        kb.add(btn(v, f"vol_{v}", style="success"))
+    kb.add(btn("🔙 بازگشت", "buy_vip", style="danger"))
     bot.edit_message_text("حجم را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -953,8 +960,8 @@ def buy_napsterv(c):
     p = get_db_prices("PRICES_NAPSTERV")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys():
-        kb.add(btn(v, f"vol_{v}"))
-    kb.add(btn("🔙 بازگشت", "buy"))
+        kb.add(btn(v, f"vol_{v}", style="success"))
+    kb.add(btn("🔙 بازگشت", "buy", style="danger"))
     bot.edit_message_text("حجم سرور نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -967,8 +974,8 @@ def buy_napsterv_unlim(c):
     p = get_db_prices("PRICES_NAPSTERV_UNLIM")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys():
-        kb.add(btn(v, f"vol_{v}"))
-    kb.add(btn("🔙 بازگشت", "buy"))
+        kb.add(btn(v, f"vol_{v}", style="success"))
+    kb.add(btn("🔙 بازگشت", "buy", style="danger"))
     bot.edit_message_text("حجم سرور نامحدود نپستر را انتخاب کنید:", c.message.chat.id, c.message.message_id,
                            reply_markup=kb)
 
@@ -982,8 +989,8 @@ def buy_wireguard(c):
     p = get_db_prices("PRICES_WIREGUARD")
     kb = types.InlineKeyboardMarkup(row_width=3)
     for v in p.keys():
-        kb.add(btn(v, f"vol_{v}"))
-    kb.add(btn("🔙 بازگشت", "buy"))
+        kb.add(btn(v, f"vol_{v}", style="success"))
+    kb.add(btn("🔙 بازگشت", "buy", style="danger"))
     bot.edit_message_text("حجم سرور وایرگارد را انتخاب کنید:", c.message.chat.id, c.message.message_id,
                            reply_markup=kb)
 
@@ -1005,10 +1012,10 @@ def select_volume(c):
                          "discount_applied": False, "final_price": price}
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("✅ تایید", "final_buy"), btn("❌ لغو", "back"))
+    kb.add(btn("✅ تایید", "final_buy", style="success"), btn("❌ لغو", "back", style="danger"))
 
     if get_setting('coupon_system_status'):
-        kb.add(btn("🏷 دارم کد تخفیف", "apply_coupon_prompt"))
+        kb.add(btn("🏷 دارم کد تخفیف", "apply_coupon_prompt", style="primary"))
 
     bot.send_message(uid, f"آیا از خرید سرویس {plan} حجم {volume} به مبلغ {format_p(price)} اطمینان دارید؟",
                       reply_markup=kb)
@@ -1048,7 +1055,7 @@ def final_buy(c):
 
     bot.send_message(uid, f"⏳ سفارش شما ثبت شد. در حال ساخت کانفیگ...\nکد پیگیری: #{track_code}")
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📤 ارسال کانفیگ", f"sendcfg_{order_id}"))
+    kb.add(btn("📤 ارسال کانفیگ", f"sendcfg_{order_id}", style="success"))
 
     bot.send_message(ADMIN_ID,
                       f"🛒 سفارش جدید\n\n🆔 OrderID: {order_id}\n📌 کد پیگیری: #{track_code}\n👤 کاربر: {uid}\n📦 پلن: {data['plan']}\n📊 حجم: {data['volume']}\n💵 مبلغ: {format_p(final_p)}",
@@ -1130,7 +1137,7 @@ def send_config_file_to_user(m):
     kb_expire = None
     if get_setting('reminder_system_status'):
         kb_expire = types.InlineKeyboardMarkup()
-        kb_expire.add(btn("📅 ثبت تاریخ انقضا", f"set_expire_{order_id}"))
+        kb_expire.add(btn("📅 ثبت تاریخ انقضا", f"set_expire_{order_id}", style="primary"))
 
     bot.send_document(user_id, m.document.file_id, caption=f"✅ کانفیگ سفارش شما:\n\n{caption}")
     orders_col.update_one({"_id": ObjectId(order_id)}, {"$set": {"status": "done"}})
@@ -1165,7 +1172,7 @@ def send_config_to_user(m):
     kb_expire = None
     if get_setting('reminder_system_status'):
         kb_expire = types.InlineKeyboardMarkup()
-        kb_expire.add(btn("📅 ثبت تاریخ انقضا", f"set_expire_{order_id}"))
+        kb_expire.add(btn("📅 ثبت تاریخ انقضا", f"set_expire_{order_id}", style="primary"))
 
     bot.send_message(user_id, f"✅ کانفیگ شما:\n\n{m.text}")
     orders_col.update_one({"_id": ObjectId(order_id)}, {"$set": {"status": "done"}})
@@ -1208,8 +1215,8 @@ def support(c):
     except:
         pass
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("💬 ارتباط با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@', '')}"))
-    kb.add(btn("🔙 بازگشت", "back"))
+    kb.add(btn("💬 ارتباط با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@', '')}", style="primary"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     bot.edit_message_text("📞 برای ارتباط با پشتیبانی روی دکمه زیر کلیک کنید:", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -1257,9 +1264,9 @@ def adm_show_user(m):
     is_banned = d.get("is_banned") or d.get("warnings", 0) >= 3
     ban_txt = "🔓 آن‌بن کردن" if is_banned else "🚫 بن کردن"
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("➕ افزودن موجودی", f"adm_add_{uid}"), btn("➖ کسر موجودی", f"adm_sub_{uid}"))
-    kb.add(btn("⚠️ اخطار", f"adm_warn_{uid}"), btn(ban_txt, f"adm_ban_{uid}"))
-    kb.add(btn("📩 پیام خصوصی", f"adm_pmsg_{uid}"))
+    kb.add(btn("➕ افزودن موجودی", f"adm_add_{uid}", style="success"), btn("➖ کسر موجودی", f"adm_sub_{uid}", style="danger"))
+    kb.add(btn("⚠️ اخطار", f"adm_warn_{uid}", style="danger"), btn(ban_txt, f"adm_ban_{uid}", style="danger"))
+    kb.add(btn("📩 پیام خصوصی", f"adm_pmsg_{uid}", style="primary"))
     bot.send_message(ADMIN_ID,
                       f"👤 کاربر {uid} \n\n💰 موجودی: {format_p(d['balance'])}\n🏦 پرداخت موفق: {d['success_payments']}\n🛍 سرویس‌ها: {d['configs_count']}\n⚠️ اخطار: {d['warnings']}\n🚫 وضعیت: {'مسدود' if is_banned else 'آزاد'}\n⏰ عضویت: {d['join_date']}",
                       reply_markup=kb)
@@ -1369,10 +1376,10 @@ def do_broadcast(m):
 @bot.callback_query_handler(func=lambda c: c.data == "adm_change_prices")
 def adm_change_prices(c):
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📅 قیمت ۱ ماهه", "FIXEDsetp_MONTH"), btn("♾ قیمت VIP", "FIXEDsetp_VIP"))
-    kb.add(btn("🔮 قیمت نپستر", "FIXEDsetp_NAPSTERV"), btn("🌀 قیمت نپستر نامحدود", "FIXEDsetp_NAPSTERV_UNLIM"))
-    kb.add(btn("🔴 قیمت وایرگارد", "FIXEDsetp_WIREGUARD"))
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn("📅 قیمت ۱ ماهه", "FIXEDsetp_MONTH", style="primary"), btn("♾ قیمت VIP", "FIXEDsetp_VIP", style="primary"))
+    kb.add(btn("🔮 قیمت نپستر", "FIXEDsetp_NAPSTERV", style="primary"), btn("🌀 قیمت نپستر نامحدود", "FIXEDsetp_NAPSTERV_UNLIM", style="primary"))
+    kb.add(btn("🔴 قیمت وایرگارد", "FIXEDsetp_WIREGUARD", style="primary"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("⚙️ مدیریت تعرفه‌ها و حجم سرورها:\nکدام دسته‌بندی را مدیریت می‌کنید؟", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -1384,11 +1391,11 @@ def FIXED_adm_setp_plan(c):
     p = get_db_prices(f"PRICES_{plan}")
     for v in list(p.keys()):
         kb.add(
-            btn(f"⚙️ {v} ({format_p(p[v])} ت)", f"FIXEDedit_{plan}:::{v}"),
-            btn(f"❌ حذف حجم {v}", f"FIXEDdel_{plan}:::{v}")
+            btn(f"⚙️ {v} ({format_p(p[v])} ت)", f"FIXEDedit_{plan}:::{v}", style="primary"),
+            btn(f"❌ حذف حجم {v}", f"FIXEDdel_{plan}:::{v}", style="danger")
         )
-    kb.add(btn("➕ افزودن حجم جدید به این سرویس", f"FIXEDadd_{plan}"))
-    kb.add(btn("🔙 بازگشت", "adm_change_prices"))
+    kb.add(btn("➕ افزودن حجم جدید به این سرویس", f"FIXEDadd_{plan}", style="success"))
+    kb.add(btn("🔙 بازگشت", "adm_change_prices", style="danger"))
     bot.edit_message_text(f"لیست حجم‌های فعلی پلن {plan}:\nجهت تغییر قیمت یا حذف انتخاب کنید یا حجم جدید بسازید:",
                            c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -1454,8 +1461,8 @@ def adm_fjoin_mgr(c):
     if c.from_user.id != ADMIN_ID:
         return
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📢 مدیریت کانال‌ها", "fjm_channel"), btn("👥 مدیریت گروه‌ها", "fjm_group"))
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn("📢 مدیریت کانال‌ها", "fjm_channel", style="primary"), btn("👥 مدیریت گروه‌ها", "fjm_group", style="primary"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("🛡 بخش مدیریت عضویت اجباری:\nیکی از موارد زیر را انتخاب کنید:", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -1472,9 +1479,9 @@ def fjm_list(c):
     else:
         for item in items:
             txt += f"🔹 {item['chat_id']}\n"
-            kb.add(btn(f"❌ حذف {item['chat_id']}", f"fjdel_{item['_id']}"))
-    kb.add(btn(f"➕ افزودن {label} جدید", f"fjadd_{target_type}"))
-    kb.add(btn("🔙 بازگشت", "adm_fjoin_mgr"))
+            kb.add(btn(f"❌ حذف {item['chat_id']}", f"fjdel_{item['_id']}", style="danger"))
+    kb.add(btn(f"➕ افزودن {label} جدید", f"fjadd_{target_type}", style="success"))
+    kb.add(btn("🔙 بازگشت", "adm_fjoin_mgr", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -1617,8 +1624,8 @@ def server_status(c):
     res = settings_col.find_one({"key": "server_status_text"})
     status_text = res['value'] if res else "وضعیت سرورها در دسترس نیست."
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔄 بروزرسانی", "server_status"))
-    kb.add(btn("🔙 بازگشت", "back"))
+    kb.add(btn("🔄 بروزرسانی", "server_status", style="primary"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     bot.edit_message_text(f"🖥 وضعیت سرورها:\n\n{status_text}", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -1629,7 +1636,7 @@ def adm_server_status(c):
     current = res['value'] if res else ""
     user_states[ADMIN_ID] = {"state": "ADM_SET_SERVER_STATUS"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text(f"🖥 وضعیت فعلی سرورها:\n\n{current}\n\n✏️ متن جدید را ارسال کنید:", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -1660,7 +1667,7 @@ def adm_smart_announce(c):
     if c.from_user.id != ADMIN_ID: return
     user_states[ADMIN_ID] = {"state": "ADM_SMART_ANNOUNCE"}
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text(
         "📢 اطلاعیه هوشمند:\n\nمتن اطلاعیه را ارسال کنید.\nپیام پس از ۶۰ ثانیه از چت کاربران حذف خواهد شد و در تاریخچه ذخیره می‌شود.",
         c.message.chat.id, c.message.message_id, reply_markup=kb)
@@ -1717,8 +1724,8 @@ def price_vip_exclusive(c):
         return
     txt = "💎 سرور اختصاصی VIP\n\nبرای دریافت اطلاعات سرور اختصاصی VIP با پشتیبانی تماس بگیرید."
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📞 تماس با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@', '')}"))
-    kb.add(btn("🔙 بازگشت", "price"))
+    kb.add(btn("📞 تماس با پشتیبانی", url=f"https://t.me/{SUPPORT_ID.replace('@', '')}", style="primary"))
+    kb.add(btn("🔙 بازگشت", "price", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -1735,11 +1742,11 @@ def adm_active_stats(c):
     month_count = users_col.count_documents({"last_activity": {"$gte": month_start}})
     total_count = users_col.count_documents({})
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"📅 امروز: {today_count} نفر", "adm_active_stats"))
-    kb.add(btn(f"📆 هفته گذشته: {week_count} نفر", "adm_active_stats"))
-    kb.add(btn(f"🗓 ماه گذشته: {month_count} نفر", "adm_active_stats"))
-    kb.add(btn(f"👥 کل کاربران: {total_count} نفر", "adm_active_stats"))
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn(f"📅 امروز: {today_count} نفر", "adm_active_stats", style="primary"))
+    kb.add(btn(f"📆 هفته گذشته: {week_count} نفر", "adm_active_stats", style="primary"))
+    kb.add(btn(f"🗓 ماه گذشته: {month_count} نفر", "adm_active_stats", style="primary"))
+    kb.add(btn(f"👥 کل کاربران: {total_count} نفر", "adm_active_stats", style="primary"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text(
         f"📊 آمار کاربران فعال:\n\n"
         f"📅 امروز: {today_count} نفر\n"
@@ -1760,8 +1767,8 @@ def tutorial_menu(c):
     items = list(tutorial_col.find({}))
     kb = types.InlineKeyboardMarkup()
     for item in items:
-        kb.add(btn(item['label'], f"tut_os_{item['os']}"))
-    kb.add(btn("🔙 بازگشت", "back"))
+        kb.add(btn(item['label'], f"tut_os_{item['os']}", style="primary"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     bot.edit_message_text("📚 آموزش اتصال\n\nسیستم‌عامل خود را انتخاب کنید:", c.message.chat.id, c.message.message_id,
                            reply_markup=kb)
 
@@ -1774,10 +1781,10 @@ def tutorial_os_servers(c):
         bot.answer_callback_query(c.id, "سیستم‌عامل یافت نشد", show_alert=True)
         return
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔵 سرور V2ray", f"tut_show_{os_key}_v2ray"))
-    kb.add(btn("🟣 سرور Npv", f"tut_show_{os_key}_npv"))
-    kb.add(btn("🔴 سرور Wireguard", f"tut_show_{os_key}_wireguard"))
-    kb.add(btn("🔙 بازگشت", "tutorial"))
+    kb.add(btn("🔵 سرور V2ray", f"tut_show_{os_key}_v2ray", style="primary"))
+    kb.add(btn("🟣 سرور Npv", f"tut_show_{os_key}_npv", style="primary"))
+    kb.add(btn("🔴 سرور Wireguard", f"tut_show_{os_key}_wireguard", style="primary"))
+    kb.add(btn("🔙 بازگشت", "tutorial", style="danger"))
     bot.edit_message_text(f"📚 آموزش {item['label']}\n\nنوع سرور را انتخاب کنید:", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -1795,7 +1802,7 @@ def show_tutorial_content_v2(c):
     os_label = os_item['label'] if os_item else os_key
     srv_label = {"v2ray": "🔵 V2ray", "npv": "🟣 Npv", "wireguard": "🔴 Wireguard"}.get(srv_type, srv_type)
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔙 بازگشت", f"tut_os_{os_key}"))
+    kb.add(btn("🔙 بازگشت", f"tut_os_{os_key}", style="danger"))
     header = f"📚 آموزش {os_label} - {srv_label}\n\n"
     if not content_data or not content_data.get('value'):
         bot.send_message(c.from_user.id, header + "آموزش هنوز تنظیم نشده است.", reply_markup=kb)
@@ -1822,7 +1829,7 @@ def show_tutorial_content_v2(c):
 
 def send_multi_content(user_id, items, header, back_cb):
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔙 بازگشت", back_cb))
+    kb.add(btn("🔙 بازگشت", back_cb, style="danger"))
     for i, item in enumerate(items):
         t = item.get("type", "text")
         content = item.get("content", "")
@@ -1846,14 +1853,14 @@ def adm_tutorial_mgr(c):
     status = "✅ باز" if (res and res['value'] == 1) else "❌ بسته"
     items = list(tutorial_col.find({}))
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"بخش آموزش: {status}", "TUT_SYS_TOG"))
-    kb.add(btn("➕ افزودن سیستم‌عامل جدید", "tut_adm_add_os"))
+    kb.add(btn(f"بخش آموزش: {status}", "TUT_SYS_TOG", style="primary"))
+    kb.add(btn("➕ افزودن سیستم‌عامل جدید", "tut_adm_add_os", style="success"))
     for item in items:
         kb.add(
-            btn(f"✏️ {item['label']}", f"tut_adm_manage_{item['os']}"),
-            btn(f"🗑 حذف {item['label']}", f"tut_adm_del_os_{item['os']}")
+            btn(f"✏️ {item['label']}", f"tut_adm_manage_{item['os']}", style="primary"),
+            btn(f"🗑 حذف {item['label']}", f"tut_adm_del_os_{item['os']}", style="danger")
         )
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("📚 مدیریت آموزش اتصال:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -1879,10 +1886,10 @@ def tut_adm_manage_os(c):
     item = tutorial_col.find_one({"os": os_key})
     if not item: return
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔵 ثبت آموزش V2ray", f"tut_adm_set_{os_key}_v2ray"))
-    kb.add(btn("🟣 ثبت آموزش Npv", f"tut_adm_set_{os_key}_npv"))
-    kb.add(btn("🔴 ثبت آموزش Wireguard", f"tut_adm_set_{os_key}_wireguard"))
-    kb.add(btn("🔙 بازگشت", "adm_tutorial_mgr"))
+    kb.add(btn("🔵 ثبت آموزش V2ray", f"tut_adm_set_{os_key}_v2ray", style="primary"))
+    kb.add(btn("🟣 ثبت آموزش Npv", f"tut_adm_set_{os_key}_npv", style="primary"))
+    kb.add(btn("🔴 ثبت آموزش Wireguard", f"tut_adm_set_{os_key}_wireguard", style="primary"))
+    kb.add(btn("🔙 بازگشت", "adm_tutorial_mgr", style="danger"))
     bot.edit_message_text(f"📚 مدیریت آموزش‌های {item['label']}:\nکدام سرور را ویرایش می‌کنید؟", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -1907,8 +1914,8 @@ def tut_adm_set_content(c):
     bot.send_message(ADMIN_ID,
                       f"📝 ثبت آموزش {os_label} - {srv_label}\n\n" f"محتوای آموزش را ارسال کنید:\n" f"• می‌توانید متن، عکس، ویدیو، یا فایل ارسال کنید\n" f"• می‌توانید چندین محتوا ارسال کنید\n\n" f"وقتی آماده بودید، دکمه زیر را بزنید:")
     kb2 = types.InlineKeyboardMarkup()
-    kb2.add(btn("✅ ثبت آموزش", f"tut_adm_save_{os_key}_{srv_type}"))
-    kb2.add(btn("❌ لغو", f"tut_adm_manage_{os_key}"))
+    kb2.add(btn("✅ ثبت آموزش", f"tut_adm_save_{os_key}_{srv_type}", style="success"))
+    kb2.add(btn("❌ لغو", f"tut_adm_manage_{os_key}", style="danger"))
     bot.send_message(ADMIN_ID, "👆 محتوا را ارسال کنید، سپس دکمه ثبت را بزنید:", reply_markup=kb2)
 
 
@@ -2029,9 +2036,9 @@ def test_account_menu(c):
         for item in items:
             label = "📢 کانال" if item['type'] == "channel" else "👥 گروه"
             url = f"https://t.me/{item['chat_id'].replace('@', '')}"
-            kb.add(btn(label, url=url))
-        kb.add(btn("✅ عضو شدم", "test_check_join"))
-        kb.add(btn("🔙 بازگشت", "back"))
+            kb.add(btn(label, url=url, style="primary"))
+        kb.add(btn("✅ عضو شدم", "test_check_join", style="primary"))
+        kb.add(btn("🔙 بازگشت", "back", style="danger"))
         bot.edit_message_text("⚠️ برای دریافت اکانت تست، ابتدا باید عضو کانال و گروه ما باشید:", c.message.chat.id,
                                c.message.message_id, reply_markup=kb)
         return
@@ -2048,10 +2055,10 @@ def test_account_menu(c):
         btn_label = tb['label']
         already_used = test_used_col.find_one({"user_id": uid, "test_key": btn_key})
         if already_used:
-            kb.add(btn(f"✅ {btn_label} (قبلاً دریافت شد)", f"test_already_{btn_key}"))
+            kb.add(btn(f"✅ {btn_label} (قبلاً دریافت شد)", f"test_already_{btn_key}", style="primary"))
         else:
-            kb.add(btn(f"🎁 {btn_label}", f"test_get_{btn_key}"))
-    kb.add(btn("🔙 بازگشت", "back"))
+            kb.add(btn(f"🎁 {btn_label}", f"test_get_{btn_key}", style="success"))
+    kb.add(btn("🔙 بازگشت", "back", style="danger"))
     bot.edit_message_text("🎁 اکانت تست\n\nنوع سرور تست را انتخاب کنید:", c.message.chat.id, c.message.message_id,
                            reply_markup=kb)
 
@@ -2125,16 +2132,16 @@ def adm_test_mgr(c):
     test_buttons = test_buttons_doc['value'] if test_buttons_doc else []
     t_status = "✅ فعال" if get_setting('test_status') else "❌ غیرفعال"
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"وضعیت تست: {t_status}", "TEST_SYS_TOG"))
-    kb.add(btn("➕ افزودن نوع تست جدید", "adm_test_add_btn"))
+    kb.add(btn(f"وضعیت تست: {t_status}", "TEST_SYS_TOG", style="primary"))
+    kb.add(btn("➕ افزودن نوع تست جدید", "adm_test_add_btn", style="success"))
     for tb in test_buttons:
         btn_key = tb['key']
         btn_label = tb['label']
         total = test_accounts_col.count_documents({"btn_key": btn_key})
         used = test_accounts_col.count_documents({"btn_key": btn_key, "used": True})
         remaining = total - used
-        kb.add(btn(f"📦 {btn_label} | موجود: {remaining} | داده‌شده: {used}", f"adm_test_detail_{btn_key}"))
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+        kb.add(btn(f"📦 {btn_label} | موجود: {remaining} | داده‌شده: {used}", f"adm_test_detail_{btn_key}", style="primary"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("🎁 مدیریت اکانت تست\n\nوضعیت هر نوع تست را مشاهده و مدیریت کنید:", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -2191,9 +2198,9 @@ def adm_test_detail(c):
     used = test_accounts_col.count_documents({"btn_key": btn_key, "used": True})
     remaining = total - used
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("➕ افزودن اکانت‌های تست", f"adm_test_add_acc_{btn_key}"))
-    kb.add(btn("🗑 حذف این نوع تست", f"adm_test_del_btn_{btn_key}"))
-    kb.add(btn("🔙 بازگشت", "adm_test_mgr"))
+    kb.add(btn("➕ افزودن اکانت‌های تست", f"adm_test_add_acc_{btn_key}", style="success"))
+    kb.add(btn("🗑 حذف این نوع تست", f"adm_test_del_btn_{btn_key}", style="danger"))
+    kb.add(btn("🔙 بازگشت", "adm_test_mgr", style="danger"))
     bot.edit_message_text(
         f"📦 مدیریت تست: {btn_label}\n\n📊 کل اکانت‌ها: {total}\n✅ داده‌شده: {used}\n🔵 موجود در مخزن: {remaining}\n\nبرای افزودن اکانت‌های جدید روی دکمه زیر کلیک کنید:",
         c.message.chat.id, c.message.message_id, reply_markup=kb)
@@ -2266,8 +2273,8 @@ def adm_buyers_report(c):
     ]
     for label, plan_key in server_list:
         count = orders_col.count_documents({"plan": plan_key, "status": "done"})
-        kb.add(btn(f"{label} ({count} خرید)", f"adm_buyers_{plan_key}"))
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+        kb.add(btn(f"{label} ({count} خرید)", f"adm_buyers_{plan_key}", style="primary"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("📋 گزارش خریداران\n\nروی هر سرور کلیک کنید تا خریداران آن را ببینید:", c.message.chat.id,
                            c.message.message_id, reply_markup=kb)
 
@@ -2290,7 +2297,7 @@ def adm_buyers_plan(c):
             bot.send_message(ADMIN_ID, part)
     else:
         kb = types.InlineKeyboardMarkup()
-        kb.add(btn("🔙 بازگشت", "adm_buyers_report"))
+        kb.add(btn("🔙 بازگشت", "adm_buyers_report", style="danger"))
         bot.send_message(ADMIN_ID, txt, reply_markup=kb)
 
 
@@ -2330,10 +2337,10 @@ def show_waiting_list_option(c, plan_key, plan_title):
     kb = types.InlineKeyboardMarkup()
     already = waiting_list_col.find_one({"user_id": uid, "plan": plan_key})
     if already:
-        kb.add(btn("✅ در لیست انتظار هستید", "already_in_wait"))
+        kb.add(btn("✅ در لیست انتظار هستید", "already_in_wait", style="primary"))
     else:
-        kb.add(btn("🔔 وقتی باز شد بهم خبر بده", f"join_wait_{plan_key}_{plan_title}"))
-    kb.add(btn("🔙 بازگشت", "price"))
+        kb.add(btn("🔔 وقتی باز شد بهم خبر بده", f"join_wait_{plan_key}_{plan_title}", style="success"))
+    kb.add(btn("🔙 بازگشت", "price", style="danger"))
     bot.edit_message_text(f"⚠️ سرور [{plan_title}] در حال حاضر بسته است. مایلید به لیست انتظار اضافه شوید؟",
                            c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -2352,7 +2359,7 @@ def join_wait_cb(c):
     waiting_list_col.insert_one({"user_id": uid, "plan": plan_key, "plan_title": plan_title, "created_at": datetime.now()})
     bot.answer_callback_query(c.id, "🔔 شما با موفقیت به لیست انتظار اضافه شدید.", show_alert=True)
     back_to_prices_btn = types.InlineKeyboardMarkup()
-    back_to_prices_btn.add(btn("🔙 بازگشت به تعرفه‌ها", "price"))
+    back_to_prices_btn.add(btn("🔙 بازگشت به تعرفه‌ها", "price", style="danger"))
     bot.edit_message_text("✅ به محض باز شدن ظرفیت یا فعال‌سازی مجدد این سرور، به شما پیام و دکمه خرید مستقیم ارسال خواهد شد.",
                            c.message.chat.id, c.message.message_id, reply_markup=back_to_prices_btn)
 
@@ -2364,7 +2371,7 @@ def check_and_notify_waiting_list(plan_key, plan_title):
         return
     count = 0
     kb_buy = types.InlineKeyboardMarkup()
-    kb_buy.add(btn("🛒 خرید آنلاین سرور", f"goto_buy_{plan_key.lower()}"))
+    kb_buy.add(btn("🛒 خرید آنلاین سرور", f"goto_buy_{plan_key.lower()}", style="success"))
 
     for w in waiters:
         try:
@@ -2396,17 +2403,17 @@ def adm_coupon_mgr(c):
     if c.from_user.id != ADMIN_ID: return
     status_str = "✅ روشن" if get_setting('coupon_system_status') else "❌ خاموش"
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"سیستم کد تخفیف: {status_str}", "COUPON_SYS_TOG"))
-    kb.add(btn("➕ ساخت کد تخفیف جدید", "adm_add_coupon"))
+    kb.add(btn(f"سیستم کد تخفیف: {status_str}", "COUPON_SYS_TOG", style="primary"))
+    kb.add(btn("➕ ساخت کد تخفیف جدید", "adm_add_coupon", style="success"))
 
     coupons = list(coupons_col.find({}))
     for cp in coupons:
         active_label = "✅" if cp.get("active", True) else "❌"
         max_use = cp['max_uses'] if cp['max_uses'] > 0 else "∞"
         kb.add(btn(f"🏷 {cp['code']} | {cp['percent']}% | ({cp['used_count']}/{max_use}) | {active_label}",
-                   f"COUPON_DETAIL_{cp['_id']}"))
+                   f"COUPON_DETAIL_{cp['_id']}", style="primary"))
 
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("🏷 پنل مدیریت کدهای تخفیف:\nبرای مشاهده جزئیات هر کد روی آن کلیک کنید:",
                            c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -2491,11 +2498,11 @@ def render_coupon_detail(chat_id, message_id, cp_id):
            f"👥 تعداد کاربران استفاده‌کننده: {len(cp.get('used_by', []))}")
     kb = types.InlineKeyboardMarkup()
     toggle_label = "❌ غیرفعال کردن" if cp.get("active", True) else "✅ فعال کردن"
-    kb.add(btn(toggle_label, f"COUPON_TOGGLE_{cp_id}"))
-    kb.add(btn("⏳ تمدید اعتبار", f"COUPON_EXTEND_{cp_id}"))
-    kb.add(btn("💯 تغییر درصد", f"COUPON_EDIT_PCT_{cp_id}"), btn("🔢 تغییر سقف استفاده", f"COUPON_EDIT_MAX_{cp_id}"))
-    kb.add(btn("🗑 حذف کد", f"COUPON_DEL_{cp_id}"))
-    kb.add(btn("🔙 بازگشت", "adm_coupon_mgr"))
+    kb.add(btn(toggle_label, f"COUPON_TOGGLE_{cp_id}", style="primary"))
+    kb.add(btn("⏳ تمدید اعتبار", f"COUPON_EXTEND_{cp_id}", style="primary"))
+    kb.add(btn("💯 تغییر درصد", f"COUPON_EDIT_PCT_{cp_id}", style="primary"), btn("🔢 تغییر سقف استفاده", f"COUPON_EDIT_MAX_{cp_id}", style="primary"))
+    kb.add(btn("🗑 حذف کد", f"COUPON_DEL_{cp_id}", style="danger"))
+    kb.add(btn("🔙 بازگشت", "adm_coupon_mgr", style="danger"))
     if message_id:
         try:
             bot.edit_message_text(txt, chat_id, message_id, reply_markup=kb)
@@ -2637,7 +2644,7 @@ def process_user_coupon(m):
     data["final_price"] = final_p
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("✅ تایید", "final_buy"), btn("❌ لغو", "back"))
+    kb.add(btn("✅ تایید", "final_buy", style="success"), btn("❌ لغو", "back", style="danger"))
     bot.send_message(uid,
                       f"✅ کد تخفیف اعمال شد!\n━━━━━━━━━━━━━━━━\n💰 قیمت اصلی: {format_p(orig_p)} تومان\n🏷 درصد تخفیف: {pct}%\n💵 قیمت نهایی: {format_p(final_p)} تومان\n━━━━━━━━━━━━━━━━\nجهت نهایی کردن فاکتور روی تایید کلیک کنید.",
                       reply_markup=kb)
@@ -2649,17 +2656,17 @@ def adm_subadmin_mgr(c):
     if c.from_user.id != ADMIN_ID: return
     status_str = "✅ روشن" if get_setting('subadmin_system_status') else "❌ خاموش"
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"سیستم ادمین‌های فرعی: {status_str}", "SUBADMIN_SYS_TOG"))
-    kb.add(btn("➕ افزودن ادمین فرعی جدید", "adm_add_subadmin"))
+    kb.add(btn(f"سیستم ادمین‌های فرعی: {status_str}", "SUBADMIN_SYS_TOG", style="primary"))
+    kb.add(btn("➕ افزودن ادمین فرعی جدید", "adm_add_subadmin", style="success"))
 
     subs = list(subadmins_col.find({}))
     for sb in subs:
         kb.add(btn(
             f"👤 {sb['user_id']} | رسید: {'✅' if sb['receipt_access'] else '❌'} | کانفیگ: {'✅' if sb['config_access'] else '❌'}",
-            f"SUBADMIN_EDIT_{sb['user_id']}"))
-        kb.add(btn(f"🗑 حذف ادمین {sb['user_id']}", f"SUBADMIN_DEL_{sb['user_id']}"))
+            f"SUBADMIN_EDIT_{sb['user_id']}", style="primary"))
+        kb.add(btn(f"🗑 حذف ادمین {sb['user_id']}", f"SUBADMIN_DEL_{sb['user_id']}", style="danger"))
 
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("👥 مدیریت ادمین‌های فرعی ربات:\nروی هر ادمین کلیک کنید تا دسترسی‌هایش را مدیریت کنید:",
                            c.message.chat.id, c.message.message_id, reply_markup=kb)
 
@@ -2682,11 +2689,11 @@ def render_subadmin_edit(chat_id, message_id, sub_id):
            f"📤 ارسال کانفیگ: {'✅ فعال' if sb['config_access'] else '❌ غیرفعال'}")
     kb = types.InlineKeyboardMarkup()
     kb.add(btn(f"💳 دسترسی رسید: {'❌ خاموش کن' if sb['receipt_access'] else '✅ روشن کن'}",
-               f"SUBADMIN_TOG_RECEIPT_{sub_id}"))
+               f"SUBADMIN_TOG_RECEIPT_{sub_id}", style="primary"))
     kb.add(btn(f"📤 دسترسی کانفیگ: {'❌ خاموش کن' if sb['config_access'] else '✅ روشن کن'}",
-               f"SUBADMIN_TOG_CONFIG_{sub_id}"))
-    kb.add(btn("🗑 حذف این ادمین", f"SUBADMIN_DEL_{sub_id}"))
-    kb.add(btn("🔙 بازگشت", "adm_subadmin_mgr"))
+               f"SUBADMIN_TOG_CONFIG_{sub_id}", style="primary"))
+    kb.add(btn("🗑 حذف این ادمین", f"SUBADMIN_DEL_{sub_id}", style="danger"))
+    kb.add(btn("🔙 بازگشت", "adm_subadmin_mgr", style="danger"))
     if message_id:
         try:
             bot.edit_message_text(txt, chat_id, message_id, reply_markup=kb)
@@ -2739,9 +2746,9 @@ def subadmin_save_id(m):
     sub_id = int(m.text)
     user_states[ADMIN_ID] = {"state": "SUBADMIN_WAIT_ACCESS", "sub_id": sub_id}
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("💳 فقط تایید/رد رسید", "SUB_ACC_1"))
-    kb.add(btn("📤 فقط ارسال کانفیگ", "SUB_ACC_2"))
-    kb.add(btn("🔥 هردو دسترسی کامل", "SUB_ACC_3"))
+    kb.add(btn("💳 فقط تایید/رد رسید", "SUB_ACC_1", style="primary"))
+    kb.add(btn("📤 فقط ارسال کانفیگ", "SUB_ACC_2", style="primary"))
+    kb.add(btn("🔥 هردو دسترسی کامل", "SUB_ACC_3", style="success"))
     bot.send_message(ADMIN_ID, f"سطح دسترسی برای ادمین فرعی {sub_id} را انتخاب کنید:", reply_markup=kb)
 
 
@@ -2825,7 +2832,7 @@ def schedule_review_poll(user_id, order_id):
     if not get_setting('review_system_status'): return
     try:
         kb = types.InlineKeyboardMarkup(row_width=5)
-        stars = [btn(f"{i} ⭐", f"rate_{order_id}_{i}") for i in range(1, 6)]
+        stars = [btn(f"{i} ⭐", f"rate_{order_id}_{i}", style="primary") for i in range(1, 6)]
         kb.add(*stars)
         bot.send_message(user_id, "از سرویس راضی بودی؟ لطفا با کلیک روی ستاره‌ها به کیفیت کانفیگ خود امتیاز دهید:", reply_markup=kb)
     except:
@@ -2861,11 +2868,11 @@ def adm_extra_systems(c):
     f_status = "✅ روشن" if get_setting('fake_messages_status') else "❌ خاموش"
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn(f"سیستم نظرسنجی: {r_status}", "EXTRA_TOG_review_system_status"))
-    kb.add(btn(f"یادآوری تمدید خودکار: {rem_status}", "EXTRA_TOG_reminder_system_status"))
-    kb.add(btn(f"ارسال پیام‌های نمایشی فیک: {f_status}", "EXTRA_TOG_fake_messages_status"))
-    kb.add(btn("📊 مشاهده آمار تفکیکی نظرسنجی‌ها", "view_reviews_stats"))
-    kb.add(btn("🔙 بازگشت", "admin_back"))
+    kb.add(btn(f"سیستم نظرسنجی: {r_status}", "EXTRA_TOG_review_system_status", style="primary"))
+    kb.add(btn(f"یادآوری تمدید خودکار: {rem_status}", "EXTRA_TOG_reminder_system_status", style="primary"))
+    kb.add(btn(f"ارسال پیام‌های نمایشی فیک: {f_status}", "EXTRA_TOG_fake_messages_status", style="primary"))
+    kb.add(btn("📊 مشاهده آمار تفکیکی نظرسنجی‌ها", "view_reviews_stats", style="primary"))
+    kb.add(btn("🔙 بازگشت", "admin_back", style="danger"))
     bot.edit_message_text("⭐ تنظیمات تکمیلی سیستم‌های ربات:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -2906,7 +2913,7 @@ def view_reviews_stats_cb(c):
         txt += "───────────────────\n"
 
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("🔙 بازگشت", "adm_extra_systems"))
+    kb.add(btn("🔙 بازگشت", "adm_extra_systems", style="danger"))
     bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 
@@ -2921,8 +2928,8 @@ def set_expire_cb(c):
     order_id = c.data.replace("set_expire_", "")
     txt = get_current_time_both_calendars() + "\n\nلطفاً تقویم موردنظر برای ثبت تاریخ انقضا را انتخاب کنید:"
     kb = types.InlineKeyboardMarkup()
-    kb.add(btn("📅 شمسی (جلالی)", f"EXPCAL_jalali_{order_id}"))
-    kb.add(btn("📅 میلادی (گریگوری)", f"EXPCAL_gregorian_{order_id}"))
+    kb.add(btn("📅 شمسی (جلالی)", f"EXPCAL_jalali_{order_id}", style="primary"))
+    kb.add(btn("📅 میلادی (گریگوری)", f"EXPCAL_gregorian_{order_id}", style="primary"))
     bot.send_message(clicker, txt, reply_markup=kb)
 
 
